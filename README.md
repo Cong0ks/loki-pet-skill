@@ -14,6 +14,12 @@
 - 任务完成通知:弹泡泡 + 播放自定义音效(BGM)
 - 离开模式:授权请求转发邮件,回复 yes/no/15min 远程审批(腾讯 Agent Mail,可选)
 
+## 文档导航
+
+- **[USAGE.md](USAGE.md)** — 新手教程:每个功能"什么时候用+怎么操作",强烈建议先读
+- **[INSTALL.md](INSTALL.md)** — 安装:环境要求、依赖、hooks 配置、常见问题
+- **[CHANGELOG.md](CHANGELOG.md)** — 版本记录
+
 ## 安装
 
 完整安装步骤(含环境要求与常见问题)见 [INSTALL.md](INSTALL.md),快速安装:
