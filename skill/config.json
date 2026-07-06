@@ -16,5 +16,6 @@
   "stop_sound": "assets/sounds/task_end.mp3",
   "notify_email": "",
   "risk_notes": true,
-  "memory_enabled": true
+  "memory_enabled": true,
+  "resume_cli": "claude -p"
 }

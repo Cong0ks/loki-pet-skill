@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QPushButton, QSizeGrip, QTextBrowser, QVBoxLayout, QWidget,
 )
 
+import handoff
 import mail_notify
 from emote_studio import EmoteStudio, list_emotes, load_emote_frames
 
@@ -115,6 +116,8 @@ DEFAULT_CONFIG = {
     # 轻量记忆: 每 10 轮对话用便宜模型提炼一次"关于主人的事实+近况",
     # 存 ~/.loki-pet/memory.md(40 条封顶),注入聊天人设; /memory 查看管理
     "memory_enabled": True,
+    # 断点续接(/resume)用的命令: 开轻量新会话注入交接快照,不重载旧会话
+    "resume_cli": "claude -p",
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
@@ -155,6 +158,60 @@ def generate_risk_note(cfg: dict, tool: str, detail: str) -> str:
     """用便宜模型给授权请求生成一句人话风险注解(在后台线程中调用)。"""
     text = cheap_complete(cfg, RISK_PROMPT + f"{tool}: {detail}", max_tokens=100)
     return text.splitlines()[0][:100]
+
+
+# ---------------- 会话断点档案 ----------------
+HANDOFF_PROMPT = (
+    "你是开发会话的交接书记员。根据下面会话记录的最后部分,写一份不超过400字的"
+    "交接快照,用 markdown 小节依次包含: 整体目标 / 已完成 / 当前状态 / "
+    "下一步待办 / 关键约束与决策。只输出快照本身,不要其他内容。\n会话记录:\n"
+)
+
+
+def read_transcript_tail(path: str, max_chars: int = 15000) -> str:
+    """从 Claude Code 会话记录(JSONL)提取末尾的对话文本。"""
+    texts = []
+    for line in Path(path).read_text(encoding="utf-8",
+                                     errors="ignore").splitlines():
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        msg = obj.get("message") or {}
+        role = msg.get("role") or obj.get("type")
+        content = msg.get("content")
+        if isinstance(content, str):
+            t = content
+        elif isinstance(content, list):
+            t = " ".join(c.get("text", "") for c in content
+                         if isinstance(c, dict) and c.get("type") == "text")
+        else:
+            t = ""
+        t = t.strip()
+        if t and role in ("user", "assistant"):
+            texts.append(f"{role}: {t[:600]}")
+    return "\n".join(texts)[-max_chars:]
+
+
+def build_session_snapshot(cfg: dict, cwd: str, transcript: str):
+    """会话结束时用便宜模型提炼交接快照(后台线程),返回 (cwd, 快照文本)。"""
+    tail = read_transcript_tail(transcript)
+    if len(tail) < 500:
+        raise RuntimeError("会话内容太少,跳过存档")
+    return cwd, cheap_complete(cfg, HANDOFF_PROMPT + tail, max_tokens=600)
+
+
+def run_resume(cfg: dict, prompt: str, cwd: str) -> str:
+    """以轻量新会话续接: 注入交接快照,启动快、成本低(后台线程)。"""
+    proc = subprocess.run(
+        cfg.get("resume_cli", "claude -p"), input=prompt, shell=True,
+        cwd=cwd or None, capture_output=True, text=True, encoding="utf-8",
+        timeout=14400,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            (proc.stderr or proc.stdout or "宿主 CLI 调用失败").strip()[:200])
+    return (proc.stdout or "").strip()[-300:]
 
 
 # ---------------- 轻量记忆 ----------------
@@ -485,6 +542,10 @@ class ChatPanel(QWidget):
             self.input.clear()
             self.pet.handle_memory_command(text[len("/memory"):].strip())
             return
+        if text.startswith("/resume"):
+            self.input.clear()
+            self.pet.handle_resume_command(text[len("/resume"):].strip())
+            return
         if self.worker and self.worker.isRunning():
             return
         self.input.clear()
@@ -596,6 +657,72 @@ class PetWindow(QWidget):
         self.tasks_timer = QTimer(self)
         self.tasks_timer.timeout.connect(self.check_tasks)
         self.tasks_timer.start(30000)
+
+    # ---- 会话断点续接 ----
+    def on_session_snapshot(self, result):
+        cwd, text = result
+        handoff.save_snapshot(cwd, text, "session")
+        self.chat.append("Loki", f"📦 会话已结束,交接快照存好了"
+                                 f"({handoff.project_key(cwd)})。"
+                                 "下次 <code>/resume</code> 秒级续接~")
+
+    def handle_resume_command(self, arg: str):
+        """聊天框 /resume: 列出断点档案 / 一键轻量续接 / 清理。"""
+        if arg == "clear":
+            n = handoff.clear_all()
+            self.chat.append("Loki", f"(清理了 {n} 个项目的断点档案)")
+            return
+        projects = handoff.list_projects()
+        if not projects:
+            self.chat.append("Loki", "还没有断点档案~上下文压缩或会话结束时"
+                                     "我会自动存档,之后就能一键续接啦。")
+            return
+        if not arg:
+            lines = []
+            for i, p in enumerate(projects, 1):
+                when = time.strftime("%m-%d %H:%M", time.localtime(p["mtime"]))
+                lines.append(f"{i}. {p['key']} ({when}) — {p['preview']}")
+            lines.append("<br><code>/resume 编号</code> 续接 / "
+                         "<code>/resume clear</code> 清空档案")
+            self.chat.append("Loki", "<br>".join(lines))
+            return
+        try:
+            proj = projects[int(arg) - 1]
+        except (ValueError, IndexError):
+            self.chat.append("Loki", "(编号不对~先 /resume 看列表)")
+            return
+        if proj["cwd"] and not Path(proj["cwd"]).is_dir():
+            self.chat.append("Loki", f"(项目目录不存在了: {proj['cwd']},"
+                                     "可能已移动或删除,没法续接哦)")
+            return
+        snap = handoff.latest_text(proj["key"])
+        prompt = (
+            "以下是上一个开发会话的交接快照,请据此继续工作:\n\n" + snap +
+            "\n\n要求: 1) 从快照的'下一步待办'继续执行;"
+            " 2) 在关键节点输出简短进展总结; 3) 遵守快照中的关键约束。"
+        )
+        self.chat.append("Loki", f"🚀 正在以轻量新会话续接 {proj['key']}"
+                                 "(注入快照,不重载旧会话)…完成我会通知你~")
+        self.show_chat()
+        worker = MailWorker(run_resume, self.cfg, prompt, proj["cwd"])
+        worker.done.connect(lambda out, p=proj: self.on_resume_done(p, out))
+        worker.failed.connect(lambda e, p=proj: self.on_resume_failed(p, e))
+        worker.start()
+        self._mail_workers.append(worker)
+
+    def on_resume_done(self, proj: dict, tail: str):
+        self.chat.append("Loki", f"✅ 续接完成: {proj['key']}<br>"
+                                 f"<span style='color:#999'>{tail[-160:]}</span>")
+        self.show_chat()
+        self.play_sfx()
+        if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
+            self.run_mail(mail_notify.send_notify_email,
+                          self.cfg["notify_email"], "断点续接完成",
+                          f"{proj['key']}\n\n结尾输出:\n{tail}")
+
+    def on_resume_failed(self, proj: dict, err: str):
+        self.chat.append("Loki", f"❌ 续接失败: {proj['key']}<br>{err}")
+        self.show_chat()
 
     # ---- 轻量记忆 ----
     def memory_prompt(self) -> str:
@@ -860,6 +987,20 @@ class PetWindow(QWidget):
         elif kind == "cancel":
             self.chat.cancel_approval(msg.get("ref", ""))
             self.pending_emails.pop(msg.get("ref", ""), None)
+        elif kind == "handoff_summary":
+            # 宿主压缩摘要白捡存档,零成本
+            path = handoff.save_snapshot(msg["cwd"], msg.get("text", ""), "compact")
+            self.chat.append("Loki", f"📦 上下文已压缩,进度快照已存档"
+                                     f"({handoff.project_key(msg['cwd'])})。"
+                                     "需要时 <code>/resume</code> 一键续接~")
+            self.show_chat()
+        elif kind == "handoff_session":
+            worker = MailWorker(build_session_snapshot, self.cfg,
+                                msg["cwd"], msg.get("transcript", ""))
+            worker.done.connect(self.on_session_snapshot)
+            worker.failed.connect(lambda _e: None)  # 内容太少等情况静默跳过
+            worker.start()
+            self._mail_workers.append(worker)
         elif kind == "notify":
             self.chat.append("Claude", msg.get("text", ""))
             self.show_chat()

@@ -123,6 +123,26 @@ def handle_permission_request(payload: dict):
           "ref": msg_id, "ts": time.time()})
 
 
+def forward_handoff(event: str, payload: dict):
+    """压缩/会话结束时把断点档案素材转发给宠物(宠物负责存档与提炼)。"""
+    cwd = str(payload.get("cwd") or "")
+    if not cwd:
+        return
+    if event == "postcompact":
+        # 宿主压缩时自带摘要,白捡存档,零模型成本(字段名做多版本兼容)
+        for key in ("summary", "compact_summary", "compactSummary"):
+            val = payload.get(key)
+            if val:
+                send({"id": uuid.uuid4().hex[:12], "type": "handoff_summary",
+                      "cwd": cwd, "text": str(val)[:8000], "ts": time.time()})
+                return
+    # 拿不到现成摘要(或 sessionend): 给出会话记录路径,由宠物提炼
+    tp = payload.get("transcript_path")
+    if tp and Path(tp).exists() and Path(tp).stat().st_size > 30000:
+        send({"id": uuid.uuid4().hex[:12], "type": "handoff_session",
+              "cwd": cwd, "transcript": str(tp), "ts": time.time()})
+
+
 def main():
     event = ""
     if "--event" in sys.argv:
@@ -138,6 +158,8 @@ def main():
             decide("pretooluse", "allow", "Loki 临时授权生效中")
     elif event == "permissionrequest":
         handle_permission_request(payload)
+    elif event in ("postcompact", "sessionend") and pet_alive():
+        forward_handoff(event, payload)
     elif event == "notification" and pet_alive():
         send({"id": uuid.uuid4().hex[:12], "type": "notify", "ts": time.time(),
               "text": str(payload.get("message", "Claude 在等你哦"))[:200]})

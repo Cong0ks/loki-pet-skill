@@ -67,6 +67,7 @@ cd "$SKILL_DIR" && python emote_studio.py <视频路径> [表情名]
 | `risk_notes` | 授权风险注解开关(默认开):便宜模型生成一句"命令作用+风险等级",宠物与离席邮件中显示 |
 | `task_cli` | 计划任务续跑命令(默认 `claude --continue -p`);聊天框 `/task 15:00 指令` 登记,到点在最近会话目录续跑,`提醒`开头则仅通知 |
 | `stop_notify_min_seconds` | 任务完成通知阈值(秒,默认120),低于该时长的轮次不通知 |
+| `resume_cli` | 断点续接命令(默认 `claude -p`);压缩/会话结束自动存快照到 `~/.loki-pet/handoffs/`,聊天框 `/resume 编号` 以新会话注入快照续接 |
 
 修改 config.json 后需重启宠物生效(表情/语音可在运行中通过右键菜单改)。
 

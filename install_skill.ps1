@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force $dst | Out-Null
 New-Item -ItemType Directory -Force "$dst\assets" | Out-Null
 
 # 程序与 skill 定义
-Copy-Item "$src\pet.py", "$src\emote_studio.py", "$src\hook_bridge.py", "$src\mail_notify.py", "$src\requirements.txt" $dst -Force
+Copy-Item "$src\pet.py", "$src\emote_studio.py", "$src\hook_bridge.py", "$src\mail_notify.py", "$src\handoff.py", "$src\requirements.txt" $dst -Force
 Copy-Item "$src\skill\SKILL.md" $dst -Force
 # config.json 仅在目标不存在时写入,避免覆盖用户已有配置
 if (-not (Test-Path "$dst\config.json")) {
