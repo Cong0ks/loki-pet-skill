@@ -8,6 +8,7 @@ Loki 幽灵桌面宠物 — 跨平台 (Windows / macOS)
 import asyncio
 import json
 import math
+import random
 import re
 import subprocess
 import sys
@@ -26,7 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 import mail_notify
-from emote_studio import EmoteStudio, load_emote_frames
+from emote_studio import EmoteStudio, list_emotes, load_emote_frames
 
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "config.json"
@@ -60,6 +61,9 @@ DEFAULT_CONFIG = {
     "tts_enabled": True,
     "tts_voice": "zh-CN-YunxiNeural",
     "emote": "",
+    # 表情随机轮播: 导入多个表情后,每隔 N 分钟随机切换一个(右键菜单开关)
+    "emote_shuffle": False,
+    "emote_shuffle_minutes": 5,
     # Claude 任务完成时播放的音效(相对本目录;空串关闭)
     "stop_sound": "assets/sounds/task_end.mp3",
     # 离开模式的通知邮箱(经 agently-cli 发送,回复 yes/no/15min 即远程授权)
@@ -395,6 +399,39 @@ class PetWindow(QWidget):
         self.mail_timer.timeout.connect(self.poll_mail_replies)
         self.mail_timer.start(60000)
 
+        # 表情随机轮播
+        self.shuffle_timer = QTimer(self)
+        self.shuffle_timer.timeout.connect(self.shuffle_emote)
+        if self.cfg.get("emote_shuffle"):
+            self.shuffle_timer.start(self.shuffle_interval_ms())
+
+    # ---- 表情随机轮播 ----
+    def shuffle_interval_ms(self) -> int:
+        return max(1, int(self.cfg.get("emote_shuffle_minutes", 5))) * 60000
+
+    def shuffle_emote(self):
+        candidates = [n for n in list_emotes() if n != self.cfg.get("emote", "")]
+        if candidates:
+            self.apply_emote(random.choice(candidates))
+
+    def set_emote_shuffle(self, enabled: bool):
+        self.cfg["emote_shuffle"] = enabled
+        self.save_cfg()
+        if enabled:
+            count = len(list_emotes())
+            if count < 2:
+                self.chat.append("Loki", f"(随机轮播已开启,但目前只有 {count} 个表情,"
+                                         "多导入几个才换得起来哦~)")
+            else:
+                mins = self.cfg.get("emote_shuffle_minutes", 5)
+                self.chat.append("Loki", f"(表情随机轮播已开启,每 {mins} 分钟"
+                                         f"从 {count} 个表情里随机换一个)")
+            self.show_chat()
+            self.shuffle_timer.start(self.shuffle_interval_ms())
+            self.shuffle_emote()  # 立即换一次,给出直观反馈
+        else:
+            self.shuffle_timer.stop()
+
     # ---- Claude Code hook 桥接 ----
     def poll_inbox(self):
         for f in sorted(INBOX.glob("*.json")):
@@ -728,6 +765,12 @@ class PetWindow(QWidget):
         studio_act = QAction("表情工坊…", menu)
         studio_act.triggered.connect(self.open_studio)
         menu.addAction(studio_act)
+        shuffle_act = QAction(
+            f"随机切换表情(每{self.cfg.get('emote_shuffle_minutes', 5)}分钟)", menu)
+        shuffle_act.setCheckable(True)
+        shuffle_act.setChecked(bool(self.cfg.get("emote_shuffle")))
+        shuffle_act.toggled.connect(self.set_emote_shuffle)
+        menu.addAction(shuffle_act)
         auth_act = QAction(f"自动帮按 Yes({TEMP_AUTH_MINUTES}分钟)", menu)
         auth_act.setCheckable(True)
         auth_act.setChecked(self.temp_auth_active())

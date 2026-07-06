@@ -59,6 +59,7 @@ cd "$SKILL_DIR" && python emote_studio.py <视频路径> [表情名]
 | `api_base`/`api_key`/`model` | 自定义 API 后端(与宿主流量分开);聊天框 `/api key [地址] [模型]` 配置,右键菜单切换后端 |
 | `system_prompt` | 宠物人设 |
 | `emote` | 当前动态表情名,空串为静态图片 |
+| `emote_shuffle` / `emote_shuffle_minutes` | 表情随机轮播开关与间隔(分钟),多表情时定时随机换装 |
 | `tts_enabled` / `tts_voice` | 语音朗读开关 / 音色(edge-tts,免费无需 key) |
 | `pet_width` | 显示宽度(像素) |
 | `stop_sound` | Claude 任务完成时播放的音效路径(空串关闭) |
