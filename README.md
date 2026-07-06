@@ -54,6 +54,8 @@ pip install -r requirements.txt
 | `emote_shuffle` / `emote_shuffle_minutes` | 表情随机轮播开关与间隔分钟数(在表情工坊面板设置),多表情时定时随机换装 |
 | `stop_sound` | Claude 任务完成时播放的音效路径(默认自带捷报 BGM,空串关闭;换音乐见 [assets/sounds/README.md](assets/sounds/README.md)) |
 | `notify_email` | 离开模式通知邮箱(首次开启弹框填写,聊天框 `/email 新地址` 可改) |
+| `risk_notes` | 授权风险注解开关(默认开) |
+| `chat_width` / `chat_height` | 聊天框尺寸,拖拽右下角手柄调整后自动记住 |
 
 常用中文音色: `zh-CN-YunxiNeural`(少年音,默认)、`zh-CN-XiaoxiaoNeural`(温柔女声)、`zh-CN-XiaoyiNeural`(活泼女声)。
 
@@ -69,6 +71,7 @@ python pet.py
 |---|---|
 | 左键拖拽 | 移动宠物(松手后在新位置继续漂浮) |
 | 左键单击 | 打开/关闭聊天框 |
+| 拖聊天框右下角 | 自由调整聊天框大小(自动记住) |
 | 右键 | 菜单 → 表情工坊 / 自动帮按 Yes / 离开模式 / 语音朗读开关 / 退出 |
 | 聊天框 `/email` | 查看/修改离开模式通知邮箱(本地命令,不发给 AI) |
 | 聊天框 `/api` | 查看/配置自定义 API:`/api 你的key [接口地址] [模型名]`,只给 key 默认 DeepSeek |

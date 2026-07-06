@@ -2,6 +2,12 @@
 
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.9.1] - 2026-07-06
+
+### Added
+
+- 聊天框支持自定义大小:拖拽右下角手柄自由拉伸(最小 260×200),停止拖拽后尺寸自动记住(`chat_width`/`chat_height`),下次启动保持
+
 ## [1.9.0] - 2026-07-06
 
 ### Added

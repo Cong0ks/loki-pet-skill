@@ -23,7 +23,7 @@ from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QInputDialog, QLabel, QLineEdit, QMenu,
-    QPushButton, QTextBrowser, QVBoxLayout, QWidget,
+    QPushButton, QSizeGrip, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 import mail_notify
@@ -71,6 +71,9 @@ DEFAULT_CONFIG = {
     "notify_email": "",
     # 授权风险注解: 收到授权请求时用便宜模型生成一句"命令作用+风险等级"
     "risk_notes": True,
+    # 聊天框尺寸(拖拽右下角手柄调整后自动记住)
+    "chat_width": 300,
+    "chat_height": 260,
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
@@ -238,14 +241,14 @@ class ChatPanel(QWidget):
         super().__init__(None, Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.pet = pet
-        self.setFixedSize(300, 260)
+        # 尺寸可由用户拖拽右下角手柄调整,并记住到 config
+        self.setMinimumSize(260, 200)
 
-        box = QWidget(self)
-        box.setGeometry(0, 0, 300, 260)
-        box.setStyleSheet(
+        self.box = QWidget(self)
+        self.box.setStyleSheet(
             "background: rgba(25,25,35,235); border-radius: 12px;"
         )
-        layout = QVBoxLayout(box)
+        layout = QVBoxLayout(self.box)
         layout.setContentsMargins(10, 10, 10, 10)
 
         self.history_view = QTextBrowser()
@@ -286,6 +289,34 @@ class ChatPanel(QWidget):
 
         self.worker = None
         self.pending_id = None
+
+        # 右下角缩放手柄 + 尺寸记忆(停止拖拽 0.8 秒后写入 config)
+        self.grip = QSizeGrip(self)
+        self.grip.setFixedSize(18, 18)
+        self.grip.setStyleSheet("background: transparent;")
+        self._size_save_timer = QTimer(self)
+        self._size_save_timer.setSingleShot(True)
+        self._size_save_timer.timeout.connect(self.save_size)
+        self.resize(int(pet.cfg.get("chat_width", 300)),
+                    int(pet.cfg.get("chat_height", 260)))
+        # 隐藏状态下 resizeEvent 不触发,先手动同步一次内部布局
+        self.box.setGeometry(0, 0, self.width(), self.height())
+        self.grip.move(self.width() - 20, self.height() - 20)
+        self.grip.raise_()
+
+    def resizeEvent(self, e):
+        if hasattr(self, "box"):
+            self.box.setGeometry(0, 0, self.width(), self.height())
+        if hasattr(self, "grip"):
+            self.grip.move(self.width() - 20, self.height() - 20)
+            self.grip.raise_()
+            self._size_save_timer.start(800)
+        super().resizeEvent(e)
+
+    def save_size(self):
+        self.pet.cfg["chat_width"] = self.width()
+        self.pet.cfg["chat_height"] = self.height()
+        self.pet.save_cfg()
 
     def show_approval(self, msg: dict):
         self.append("Claude", f'想执行 <code>{msg["tool"]}: {msg["text"]}</code>')
