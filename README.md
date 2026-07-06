@@ -43,6 +43,7 @@ pip install -r requirements.txt
 |---|---|
 | `backend` | 对话后端: `api`(默认,HTTP 接口) / `cli`(调宿主 agent 命令行,免 API key) |
 | `cli_command` | cli 后端使用的命令,默认 `claude -p`(可换 `codex exec` 等) |
+| `cli_model` | cli 后端聊天模型:`haiku`/`sonnet`(默认)/`opus`,空串跟随宿主;闲聊用便宜模型省额度,右键菜单可切换 |
 | `api_base` / `api_key` / `model` | OpenAI 兼容接口信息(api 后端必填) |
 | `system_prompt` | Loki 的人设提示词 |
 | `pet_width` | 宠物显示宽度(像素) |

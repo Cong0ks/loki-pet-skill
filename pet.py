@@ -45,6 +45,9 @@ DEFAULT_CONFIG = {
     # (如 claude / codex),消耗其登录账号的额度,无需 API key
     "backend": "api",
     "cli_command": "claude -p",
+    # cli 后端使用的模型: 宠物闲聊用便宜模型即可,不要浪费宿主的高级模型额度
+    # 可选 haiku / sonnet / opus,空串 = 跟随宿主默认;也可右键菜单切换
+    "cli_model": "sonnet",
     "api_base": "https://api.deepseek.com/v1",
     "api_key": "sk-你的key",
     "model": "deepseek-chat",
@@ -113,8 +116,12 @@ class ChatWorker(QThread):
             else:
                 who = "我" if m["role"] == "user" else "Loki"
                 lines.append(f"{who}: {m['content']}")
+        cmd = self.cfg.get("cli_command", "claude -p")
+        model = self.cfg.get("cli_model", "").strip()
+        if model and cmd.startswith("claude"):
+            cmd += f" --model {model}"
         proc = subprocess.run(
-            self.cfg.get("cli_command", "claude -p"),
+            cmd,
             input="\n".join(lines),
             capture_output=True, text=True, encoding="utf-8",
             shell=True, timeout=180,
@@ -585,6 +592,12 @@ class PetWindow(QWidget):
         self._studio.raise_()
         self._studio.activateWindow()
 
+    def set_cli_model(self, model: str):
+        self.cfg["cli_model"] = model
+        self.save_cfg()
+        name = model or "宿主默认"
+        self.chat.append("Loki", f"(聊天模型已切换为 {name})")
+
     def save_cfg(self):
         CONFIG_PATH.write_text(
             json.dumps(self.cfg, ensure_ascii=False, indent=2),
@@ -665,6 +678,16 @@ class PetWindow(QWidget):
         away_act.setChecked(mail_notify.away_mode_active())
         away_act.toggled.connect(self.set_away_mode)
         menu.addAction(away_act)
+        # 聊天模型选择(仅 cli 后端): 闲聊用便宜模型,省宿主额度
+        model_menu = menu.addMenu("聊天模型")
+        current = self.cfg.get("cli_model", "")
+        for label, value in (("Haiku(最省)", "haiku"), ("Sonnet(推荐)", "sonnet"),
+                             ("Opus(贵)", "opus"), ("跟随宿主默认", "")):
+            act = QAction(label, model_menu)
+            act.setCheckable(True)
+            act.setChecked(value == current)
+            act.triggered.connect(lambda _=False, v=value: self.set_cli_model(v))
+            model_menu.addAction(act)
         tts_act = QAction("语音朗读", menu)
         tts_act.setCheckable(True)
         tts_act.setChecked(self.cfg.get("tts_enabled", True))

@@ -2,6 +2,12 @@
 
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.6.0] - 2026-07-06
+
+### Added
+
+- 聊天模型可选(`cli_model`):cli 后端聊天默认用 `sonnet` 等便宜模型,不再消耗宿主的高级模型额度;右键菜单"聊天模型"可在 Haiku / Sonnet / Opus / 跟随宿主 间切换。仅聊天消耗模型,通知/语音/授权联动均不走模型
+
 ## [1.5.3] - 2026-07-06
 
 ### Changed(发布准备)
