@@ -69,9 +69,44 @@ DEFAULT_CONFIG = {
     # 离开模式的通知邮箱(经 agently-cli 发送,回复 yes/no/15min 即远程授权)
     # 首次开启离开模式时弹框填写并记住;聊天框输入 /email 新地址 可随时修改
     "notify_email": "",
+    # 授权风险注解: 收到授权请求时用便宜模型生成一句"命令作用+风险等级"
+    "risk_notes": True,
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
+
+RISK_PROMPT = (
+    "你是给不懂编程的用户解释命令的安全助手。用中文一句话(不超过50字)说明"
+    "下面这条操作会做什么,开头标注[低风险]/[中风险]/[高风险]。"
+    "删除或覆盖文件、下载执行、修改系统配置、对外发送数据属于中高风险,"
+    "只读查询属于低风险。只输出这一句话,不要任何其他内容。\n操作: "
+)
+
+
+def generate_risk_note(cfg: dict, tool: str, detail: str) -> str:
+    """用便宜模型给授权请求生成一句人话风险注解(在后台线程中调用)。"""
+    prompt = RISK_PROMPT + f"{tool}: {detail}"
+    if cfg.get("backend", "cli") != "api":
+        cmd = cfg.get("cli_command", "claude -p")
+        if cmd.startswith("claude"):
+            cmd += " --model haiku"  # 注解固定用最便宜的模型
+        proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
+                              encoding="utf-8", shell=True, timeout=60)
+        text = (proc.stdout or "").strip()
+        if proc.returncode != 0 or not text:
+            raise RuntimeError((proc.stderr or "CLI 无输出").strip()[:100])
+        return text.splitlines()[0][:100]
+    resp = requests.post(
+        cfg["api_base"].rstrip("/") + "/chat/completions",
+        headers={"Authorization": f"Bearer {cfg['api_key']}",
+                 "Content-Type": "application/json"},
+        json={"model": cfg["model"], "temperature": 0, "max_tokens": 100,
+              "messages": [{"role": "user", "content": prompt}]},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    text = resp.json()["choices"][0]["message"]["content"].strip()
+    return text.splitlines()[0][:100]
 
 
 def load_config() -> dict:
@@ -463,11 +498,16 @@ class PetWindow(QWidget):
             self.chat.show_approval(msg)
             self.show_chat()
             self.speak("有命令等你批准哦!")
-            if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
-                self.pending_emails[msg["id"]] = time.time()
-                self.run_mail(mail_notify.send_permission_email,
-                              self.cfg["notify_email"], msg["id"],
-                              msg.get("tool", "?"), msg.get("text", ""))
+            # 风险注解生成后再发离席邮件,让注解一并写进邮件正文
+            if self.cfg.get("risk_notes", True):
+                worker = MailWorker(generate_risk_note, self.cfg,
+                                    msg.get("tool", "?"), msg.get("text", ""))
+                worker.done.connect(lambda note, m=msg: self.on_risk_note(m, note))
+                worker.failed.connect(lambda _e, m=msg: self.send_away_email(m, ""))
+                worker.start()
+                self._mail_workers.append(worker)
+            else:
+                self.send_away_email(msg, "")
         elif kind == "cancel":
             self.chat.cancel_approval(msg.get("ref", ""))
             self.pending_emails.pop(msg.get("ref", ""), None)
@@ -483,6 +523,18 @@ class PetWindow(QWidget):
                 self.run_mail(mail_notify.send_notify_email,
                               self.cfg["notify_email"], "任务完成",
                               msg.get("text", "Claude 任务完成啦!"))
+
+    def on_risk_note(self, msg: dict, note: str):
+        if note:
+            self.chat.append("Loki", f"🔎 {note}")
+        self.send_away_email(msg, note)
+
+    def send_away_email(self, msg: dict, note: str):
+        if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
+            self.pending_emails[msg["id"]] = time.time()
+            self.run_mail(mail_notify.send_permission_email,
+                          self.cfg["notify_email"], msg["id"],
+                          msg.get("tool", "?"), msg.get("text", ""), note)
 
     # ---- 离开模式(邮件审批) ----
     def run_mail(self, fn, *args):

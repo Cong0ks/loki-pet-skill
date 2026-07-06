@@ -74,10 +74,12 @@ def send_mail(to: str, subject: str, body: str):
         _run(args + ["--confirmation-token", ctk])
 
 
-def send_permission_email(to: str, req_id: str, tool: str, detail: str):
+def send_permission_email(to: str, req_id: str, tool: str, detail: str,
+                          note: str = ""):
     subject = f"{SUBJECT_PREFIX} #{req_id} Claude 请求执行 {tool}"
+    note_line = f"Loki 风险注解: {note}\n\n" if note else ""
     body = (
-        f"Claude Code 请求执行:\n\n  {tool}: {detail}\n\n"
+        f"Claude Code 请求执行:\n\n  {tool}: {detail}\n\n{note_line}"
         f"直接回复本邮件,正文第一行写下你的决定:\n"
         f"  yes   = 允许这一次\n"
         f"  no    = 拒绝\n"
