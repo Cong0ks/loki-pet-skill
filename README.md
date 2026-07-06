@@ -63,6 +63,7 @@ pip install -r requirements.txt
 | `risk_notes` | 授权风险注解开关(默认开) |
 | `chat_width` / `chat_height` | 聊天框尺寸,拖拽右下角手柄调整后自动记住 |
 | `stop_notify_min_seconds` | 任务完成通知阈值(秒,默认 120):本轮耗时低于该值不通知 |
+| `memory_enabled` | 轻量记忆开关(默认开):每 10 轮对话提炼一次"关于主人的事实+近况",注入人设;`/memory` 管理 |
 
 常用中文音色: `zh-CN-YunxiNeural`(少年音,默认)、`zh-CN-XiaoxiaoNeural`(温柔女声)、`zh-CN-XiaoyiNeural`(活泼女声)。
 
@@ -84,6 +85,7 @@ python pet.py
 | 聊天框 `/api` | 查看/配置自定义 API:`/api 你的key [接口地址] [模型名]`,只给 key 默认 DeepSeek |
 | 聊天框 `/task` | 计划任务:到点提醒或让宿主续跑(见"计划任务"章节) |
 | 聊天框 `/face` | 打开表情工坊 |
+| 聊天框 `/memory` | 查看记忆 / `forget 关键词` 删除 / `clear` 清空 |
 
 ## 表情工坊(视频转动态表情)
 

@@ -112,6 +112,9 @@ DEFAULT_CONFIG = {
     "stop_notify_min_seconds": 120,
     # 计划任务续跑用的宿主命令(/task 到点时执行,追加任务指令)
     "task_cli": "claude --continue -p",
+    # 轻量记忆: 每 10 轮对话用便宜模型提炼一次"关于主人的事实+近况",
+    # 存 ~/.loki-pet/memory.md(40 条封顶),注入聊天人设; /memory 查看管理
+    "memory_enabled": True,
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
@@ -124,30 +127,90 @@ RISK_PROMPT = (
 )
 
 
-def generate_risk_note(cfg: dict, tool: str, detail: str) -> str:
-    """用便宜模型给授权请求生成一句人话风险注解(在后台线程中调用)。"""
-    prompt = RISK_PROMPT + f"{tool}: {detail}"
+def cheap_complete(cfg: dict, prompt: str, max_tokens: int = 200) -> str:
+    """用便宜模型跑一个小提示词(风险注解/记忆提炼共用,后台线程中调用)。"""
     if cfg.get("backend", "cli") != "api":
         cmd = cfg.get("cli_command", "claude -p")
         if cmd.startswith("claude"):
-            cmd += " --model haiku"  # 注解固定用最便宜的模型
+            cmd += " --model haiku"  # 杂务固定用最便宜的模型
         proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                              encoding="utf-8", shell=True, timeout=60)
+                              encoding="utf-8", shell=True, timeout=90)
         text = (proc.stdout or "").strip()
         if proc.returncode != 0 or not text:
             raise RuntimeError((proc.stderr or "CLI 无输出").strip()[:100])
-        return text.splitlines()[0][:100]
+        return text
     resp = requests.post(
         cfg["api_base"].rstrip("/") + "/chat/completions",
         headers={"Authorization": f"Bearer {cfg['api_key']}",
                  "Content-Type": "application/json"},
-        json={"model": cfg["model"], "temperature": 0, "max_tokens": 100,
+        json={"model": cfg["model"], "temperature": 0, "max_tokens": max_tokens,
               "messages": [{"role": "user", "content": prompt}]},
-        timeout=30,
+        timeout=60,
     )
     resp.raise_for_status()
-    text = resp.json()["choices"][0]["message"]["content"].strip()
+    return resp.json()["choices"][0]["message"]["content"].strip()
+
+
+def generate_risk_note(cfg: dict, tool: str, detail: str) -> str:
+    """用便宜模型给授权请求生成一句人话风险注解(在后台线程中调用)。"""
+    text = cheap_complete(cfg, RISK_PROMPT + f"{tool}: {detail}", max_tokens=100)
     return text.splitlines()[0][:100]
+
+
+# ---------------- 轻量记忆 ----------------
+MEMORY_PATH = BRIDGE_DIR / "memory.md"
+MAX_FACTS = 40
+MEMORY_EVERY_ROUNDS = 10
+
+MEM_PROMPT = (
+    "你在为一只桌宠提炼关于'主人'的长期记忆。从下面对话中提取值得长期记住的"
+    "稳定事实(偏好/称呼/长期项目/习惯,0~3条,每条不超过30字,临时状态不要);"
+    "再用一句话(不超过50字)概括主人近况。严格按此格式输出,没有新事实就只输出"
+    " RECENT 行:\nFACT: <事实>\nRECENT: <近况>\n"
+)
+
+
+def load_memory() -> dict:
+    facts, recent, section = [], [], ""
+    try:
+        text = MEMORY_PATH.read_text(encoding="utf-8")
+    except OSError:
+        return {"facts": [], "recent": ""}
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("## 事实"):
+            section = "f"
+        elif s.startswith("## 近况"):
+            section = "r"
+        elif section == "f" and s.startswith("- "):
+            facts.append(s[2:])
+        elif section == "r" and s and not s.startswith("#"):
+            recent.append(s)
+    return {"facts": facts, "recent": " ".join(recent)}
+
+
+def save_memory(mem: dict):
+    lines = ["# Loki 的记忆(纯文本,可手动编辑;删除本文件即清空)", "", "## 事实"]
+    lines += [f"- {f}" for f in mem["facts"]]
+    lines += ["", "## 近况", mem.get("recent", ""), ""]
+    MEMORY_PATH.write_text("\n".join(lines), encoding="utf-8")
+
+
+def extract_memory(cfg: dict, dialog: str, known_facts: str):
+    """便宜模型从近期对话提炼新事实与近况(后台线程)。"""
+    prompt = MEM_PROMPT
+    if known_facts:
+        prompt += f"\n已记住的事实(不要重复输出): {known_facts}\n"
+    prompt += f"\n对话:\n{dialog}"
+    text = cheap_complete(cfg, prompt, max_tokens=250)
+    facts, recent = [], ""
+    for line in text.splitlines():
+        s = line.strip()
+        if s.upper().startswith("FACT:"):
+            facts.append(s[5:].strip())
+        elif s.upper().startswith("RECENT:"):
+            recent = s[7:].strip()
+    return facts, recent
 
 
 def load_config() -> dict:
@@ -418,6 +481,10 @@ class ChatPanel(QWidget):
             self.input.clear()
             self.pet.handle_task_command(text[len("/task"):].strip())
             return
+        if text.startswith("/memory"):
+            self.input.clear()
+            self.pet.handle_memory_command(text[len("/memory"):].strip())
+            return
         if self.worker and self.worker.isRunning():
             return
         self.input.clear()
@@ -425,7 +492,8 @@ class ChatPanel(QWidget):
         self.pet.history.append({"role": "user", "content": text})
 
         cfg = self.pet.cfg
-        msgs = [{"role": "system", "content": cfg["system_prompt"]}]
+        msgs = [{"role": "system",
+                 "content": cfg["system_prompt"] + self.pet.memory_prompt()}]
         msgs += self.pet.history[-cfg["max_history"]:]
         self.worker = ChatWorker(cfg, msgs)
         self.worker.finished_ok.connect(self.on_reply)
@@ -436,6 +504,7 @@ class ChatPanel(QWidget):
         self.pet.history.append({"role": "assistant", "content": text})
         self.append("Loki", text)
         self.pet.speak(text)
+        self.pet.note_exchange()
 
     def follow_pet(self):
         """贴在宠物左侧或右侧,自动避开屏幕边缘。"""
@@ -511,6 +580,7 @@ class PetWindow(QWidget):
         # 离开模式: 授权请求转发邮件,每 60 秒查一次回复
         self.pending_emails: dict = {}  # req_id -> 发出时间
         self._last_stop_note = 0.0
+        self.mem_round = 0
         self._mail_workers: list = []
         self.mail_timer = QTimer(self)
         self.mail_timer.timeout.connect(self.poll_mail_replies)
@@ -526,6 +596,84 @@ class PetWindow(QWidget):
         self.tasks_timer = QTimer(self)
         self.tasks_timer.timeout.connect(self.check_tasks)
         self.tasks_timer.start(30000)
+
+    # ---- 轻量记忆 ----
+    def memory_prompt(self) -> str:
+        if not self.cfg.get("memory_enabled", True):
+            return ""
+        mem = load_memory()
+        if not mem["facts"] and not mem["recent"]:
+            return ""
+        parts = ["\n\n[你对主人的记忆,自然地运用,不要生硬复述]"]
+        if mem["facts"]:
+            parts.append("事实: " + "; ".join(mem["facts"]))
+        if mem["recent"]:
+            parts.append("近况: " + mem["recent"])
+        return "\n".join(parts)
+
+    def note_exchange(self):
+        """每完成一轮对话计数,攒够 N 轮用便宜模型提炼一次记忆。"""
+        if not self.cfg.get("memory_enabled", True):
+            return
+        self.mem_round += 1
+        if self.mem_round < MEMORY_EVERY_ROUNDS:
+            return
+        self.mem_round = 0
+        tail = self.history[-MEMORY_EVERY_ROUNDS * 2:]
+        dialog = "\n".join(
+            f"{'主人' if m['role'] == 'user' else 'Loki'}: {m['content']}"
+            for m in tail)
+        known = "; ".join(load_memory()["facts"])[:800]
+        worker = MailWorker(extract_memory, self.cfg, dialog, known)
+        worker.done.connect(self.on_memory_extracted)
+        worker.failed.connect(lambda _e: None)  # 提炼失败静默,下轮再试
+        worker.start()
+        self._mail_workers.append(worker)
+
+    def on_memory_extracted(self, result):
+        new_facts, recent = result
+        mem = load_memory()
+        today = time.strftime("%Y-%m-%d")
+        for f in new_facts:
+            f = f.strip()
+            core_old = [old.split("] ", 1)[-1] for old in mem["facts"]]
+            if f and f not in core_old:
+                mem["facts"].append(f"[{today}] {f}")
+        mem["facts"] = mem["facts"][-MAX_FACTS:]  # 封顶,最旧的先淘汰
+        if recent:
+            mem["recent"] = f"[{today}] {recent}"
+        save_memory(mem)
+
+    def handle_memory_command(self, arg: str):
+        """聊天框 /memory 命令: 查看/删除/清空记忆。"""
+        mem = load_memory()
+        if not arg:
+            if not mem["facts"] and not mem["recent"]:
+                self.chat.append("Loki", "我还没有记忆~多聊聊,每 10 轮我会"
+                                         "悄悄记下关于你的事。<br>"
+                                         "(文件在 ~/.loki-pet/memory.md,可手动编辑)")
+                return
+            lines = [f"{i}. {f}" for i, f in enumerate(mem["facts"], 1)]
+            if mem["recent"]:
+                lines.append(f"近况: {mem['recent']}")
+            lines.append("<br>管理: <code>/memory forget 关键词</code> 删除 / "
+                         "<code>/memory clear</code> 清空")
+            self.chat.append("Loki", "<br>".join(lines))
+        elif arg.startswith("forget"):
+            kw = arg[len("forget"):].strip()
+            if not kw:
+                self.chat.append("Loki", "(要忘掉什么?/memory forget 关键词)")
+                return
+            kept = [f for f in mem["facts"] if kw not in f]
+            removed = len(mem["facts"]) - len(kept)
+            mem["facts"] = kept
+            save_memory(mem)
+            self.chat.append("Loki", f"(好啦,忘掉了 {removed} 条含「{kw}」的记忆)")
+        elif arg == "clear":
+            MEMORY_PATH.unlink(missing_ok=True)
+            self.chat.append("Loki", "(全忘光啦!我们重新认识吧~)")
+        else:
+            self.chat.append("Loki", "(用法: /memory 查看 | forget 关键词 | clear)")
 
     # ---- 计划任务 ----
     def load_tasks(self) -> list:

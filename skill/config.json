@@ -15,5 +15,6 @@
   "emote_shuffle_minutes": 5,
   "stop_sound": "assets/sounds/task_end.mp3",
   "notify_email": "",
-  "risk_notes": true
+  "risk_notes": true,
+  "memory_enabled": true
 }

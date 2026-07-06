@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0] - 2026-07-07
+
+### Added
+
+- 轻量记忆库:每 10 轮对话用便宜模型提炼"关于主人的稳定事实(带日期,40 条封顶,最旧先淘汰)+一句近况",存 `~/.loki-pet/memory.md`(纯文本可手动编辑),自动注入宠物聊天人设——重启不再失忆;聊天框 `/memory` 查看、`forget 关键词` 定点删除、`clear` 清空;`memory_enabled` 可关。记忆只进宠物自己的聊天调用,不占宿主会话上下文
+- 重构:风险注解与记忆提炼共用 `cheap_complete()` 便宜模型调用(CLI 后端固定 Haiku)
+
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
 ## [1.10.0] - 2026-07-06
