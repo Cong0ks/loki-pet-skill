@@ -368,6 +368,9 @@ class PetWindow(QWidget):
         # Claude Code hook 桥接: 心跳表明宠物在线,轮询收件箱接收请求/通知
         INBOX.mkdir(parents=True, exist_ok=True)
         REPLIES.mkdir(parents=True, exist_ok=True)
+        # 每次启动都回到安全默认: 临时授权与离开模式均不开启
+        TEMP_AUTH.unlink(missing_ok=True)
+        mail_notify.AWAY_MODE.unlink(missing_ok=True)
         self.hb_timer = QTimer(self)
         self.hb_timer.timeout.connect(
             lambda: HEARTBEAT.write_text(str(time.time()), encoding="utf-8"))
