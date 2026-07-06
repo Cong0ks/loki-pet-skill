@@ -1,0 +1,15 @@
+{
+  "backend": "cli",
+  "cli_command": "claude -p",
+  "api_base": "https://api.deepseek.com/v1",
+  "api_key": "",
+  "model": "deepseek-chat",
+  "system_prompt": "你是 Loki,一只白发红眼、坏笑着的小幽灵桌面宠物。说话简短、俏皮、带点恶作剧气质,每次回复不超过三句话。",
+  "pet_width": 180,
+  "max_history": 20,
+  "tts_enabled": true,
+  "tts_voice": "zh-CN-YunxiNeural",
+  "emote": "",
+  "stop_sound": "assets/sounds/task_end.mp3",
+  "notify_email": ""
+}

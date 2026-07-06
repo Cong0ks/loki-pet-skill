@@ -1,0 +1,20 @@
+# 运行时配置(仅根目录): 含个人 API key / 通知邮箱等隐私,严禁入库
+# (模板见 skill/config.json,程序首次运行也会自动生成)
+/config.json
+
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 表情帧序列: 由 emote_studio.py 从视频生成,体积大(每个表情几十 MB)
+# 克隆者用 assets/*.mp4 源视频自行转换即可
+assets/emotes/
+
+# 音效: 版权归属未确认前不入库,使用者放入自己的音频并配置 stop_sound
+assets/sounds/
+skill/*.mp3
+
+# 打包产物
+build/
+dist/
+*.spec
