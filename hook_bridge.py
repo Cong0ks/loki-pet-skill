@@ -30,7 +30,7 @@ TEMP_AUTH = BRIDGE_DIR / "temp_auth.json"
 HEARTBEAT = BRIDGE_DIR / "heartbeat"
 AWAY_MODE = BRIDGE_DIR / "away_mode.json"
 
-WAIT_SECONDS = 25        # 等待宠物端点击的时长,超时回落到终端授权
+WAIT_SECONDS = 300       # 等待宠物端点击的时长(5 分钟),超时回落到终端授权
 AWAY_WAIT_SECONDS = 900  # 离开模式(邮件审批): 等邮件回复,最长 15 分钟
 
 

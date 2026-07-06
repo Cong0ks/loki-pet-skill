@@ -323,13 +323,21 @@ class ChatPanel(QWidget):
     def show_approval(self, msg: dict):
         self.append("Claude", f'想执行 <code>{msg["tool"]}: {msg["text"]}</code>')
         self.pending_id = msg["id"]
+        # 兜底过期时刻: 桥接被中断收不到 cancel 时,按钮也会静默消失
+        wait = 900 if mail_notify.away_mode_active() else 300
+        self.pending_deadline = time.time() + wait + 30
         self.approve_bar.show()
 
     def cancel_approval(self, ref: str):
+        # 请求已回落终端(或已在别处处理): 静默收起按钮,不打扰用户
         if self.pending_id == ref:
             self.pending_id = None
             self.approve_bar.hide()
-            self.append("Loki", "(等太久啦,这条请求回终端处理咯)")
+
+    def check_expiry(self):
+        if self.pending_id and time.time() > getattr(self, "pending_deadline", 0):
+            self.pending_id = None
+            self.approve_bar.hide()
 
     def resolve(self, decision: str):
         if not self.pending_id:
@@ -514,6 +522,7 @@ class PetWindow(QWidget):
 
     # ---- Claude Code hook 桥接 ----
     def poll_inbox(self):
+        self.chat.check_expiry()
         for f in sorted(INBOX.glob("*.json")):
             try:
                 msg = json.loads(f.read_text(encoding="utf-8"))
