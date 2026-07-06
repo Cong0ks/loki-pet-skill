@@ -10,10 +10,6 @@ __pycache__/
 # 克隆者用 assets/*.mp4 源视频自行转换即可
 assets/emotes/
 
-# 音效: 版权归属未确认前不入库,使用者放入自己的音频并配置 stop_sound
-assets/sounds/
-skill/*.mp3
-
 # 打包产物
 build/
 dist/

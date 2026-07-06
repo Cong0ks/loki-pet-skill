@@ -2,6 +2,12 @@
 
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.6.2] - 2026-07-06
+
+### Changed
+
+- 音效随仓库分发:`assets/sounds/task_end.mp3` 入库,新增 `assets/sounds/README.md` DIY 指南(替换/新增/关闭音效的三种方式与格式说明);清理 `skill/` 下的重复音频文件
+
 ## [1.6.1] - 2026-07-06
 
 ### Fixed

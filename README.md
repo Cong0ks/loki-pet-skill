@@ -51,7 +51,7 @@ pip install -r requirements.txt
 | `tts_enabled` | 是否开启语音朗读(也可通过右键菜单切换) |
 | `tts_voice` | 朗读音色,完整列表: `python -m edge_tts --list-voices` |
 | `emote` | 当前使用的动态表情名,空串为静态图片(通过表情工坊设置) |
-| `stop_sound` | Claude 任务完成时播放的音效路径(自备音频放入 `assets/sounds/`,空串关闭) |
+| `stop_sound` | Claude 任务完成时播放的音效路径(默认自带捷报 BGM,空串关闭;换音乐见 [assets/sounds/README.md](assets/sounds/README.md)) |
 | `notify_email` | 离开模式通知邮箱(首次开启弹框填写,聊天框 `/email 新地址` 可改) |
 
 常用中文音色: `zh-CN-YunxiNeural`(少年音,默认)、`zh-CN-XiaoxiaoNeural`(温柔女声)、`zh-CN-XiaoyiNeural`(活泼女声)。
