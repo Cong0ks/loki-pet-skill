@@ -54,6 +54,7 @@ cd "$SKILL_DIR" && python emote_studio.py <视频路径> [表情名]
 | `backend` | `cli`(默认,用宿主 agent 额度) / `api`(OpenAI 兼容 HTTP) |
 | `cli_command` | cli 后端的命令,默认 `claude -p` |
 | `cli_model` | cli 聊天模型:`haiku`/`sonnet`(默认)/`opus`,空串跟随宿主;右键菜单可切换 |
+| `api_base`/`api_key`/`model` | 自定义 API 后端(与宿主流量分开);聊天框 `/api key [地址] [模型]` 配置,右键菜单切换后端 |
 | `system_prompt` | 宠物人设 |
 | `emote` | 当前动态表情名,空串为静态图片 |
 | `tts_enabled` / `tts_voice` | 语音朗读开关 / 音色(edge-tts,免费无需 key) |

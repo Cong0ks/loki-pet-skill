@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 | 配置项 | 说明 |
 |---|---|
-| `backend` | 对话后端: `api`(默认,HTTP 接口) / `cli`(调宿主 agent 命令行,免 API key) |
+| `backend` | 对话后端: `cli`(skill 版默认,走宿主 agent 额度) / `api`(自备便宜接口如 DeepSeek,与宿主流量完全分开);右键菜单"对话后端"可随时切换,即时生效 |
 | `cli_command` | cli 后端使用的命令,默认 `claude -p`(可换 `codex exec` 等) |
 | `cli_model` | cli 后端聊天模型:`haiku`/`sonnet`(默认)/`opus`,空串跟随宿主;闲聊用便宜模型省额度,右键菜单可切换 |
 | `api_base` / `api_key` / `model` | OpenAI 兼容接口信息(api 后端必填) |
@@ -70,6 +70,7 @@ python pet.py
 | 左键单击 | 打开/关闭聊天框 |
 | 右键 | 菜单 → 表情工坊 / 自动帮按 Yes / 离开模式 / 语音朗读开关 / 退出 |
 | 聊天框 `/email` | 查看/修改离开模式通知邮箱(本地命令,不发给 AI) |
+| 聊天框 `/api` | 查看/配置自定义 API:`/api 你的key [接口地址] [模型名]`,只给 key 默认 DeepSeek |
 
 ## 表情工坊(视频转动态表情)
 

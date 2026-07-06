@@ -285,10 +285,14 @@ class ChatPanel(QWidget):
         text = self.input.text().strip()
         if not text:
             return
-        # 本地命令: /email 查看或修改离开模式通知邮箱,不发给 AI
+        # 本地命令(不发给 AI): /email 通知邮箱; /api 自定义 API 配置
         if text.startswith("/email"):
             self.input.clear()
             self.pet.handle_email_command(text[len("/email"):].strip())
+            return
+        if text.startswith("/api"):
+            self.input.clear()
+            self.pet.handle_api_command(text[len("/api"):].strip())
             return
         if self.worker and self.worker.isRunning():
             return
@@ -595,6 +599,47 @@ class PetWindow(QWidget):
         self._studio.raise_()
         self._studio.activateWindow()
 
+    def set_backend(self, backend: str):
+        self.cfg["backend"] = backend
+        self.save_cfg()
+        if backend == "api":
+            if self.cfg.get("api_key"):
+                self.chat.append("Loki", f"(已切换到自定义 API: {self.cfg['api_base']}"
+                                         f" / {self.cfg['model']})")
+            else:
+                self.chat.append(
+                    "Loki",
+                    "(已切换到自定义 API,但还没配密钥~<br>"
+                    "在这里输入: <code>/api 你的key [接口地址] [模型名]</code><br>"
+                    "例: <code>/api sk-xxxx https://api.deepseek.com/v1 deepseek-chat</code><br>"
+                    "只给 key 时默认用 DeepSeek)")
+        else:
+            self.chat.append("Loki", "(已切换回宿主 Agent CLI,用它的账号额度聊天)")
+        self.show_chat()
+
+    def handle_api_command(self, arg: str):
+        """聊天框 /api 命令: 查看或配置自定义 API(key/地址/模型)。"""
+        if not arg:
+            key = self.cfg.get("api_key", "")
+            masked = (key[:6] + "…" + key[-4:]) if len(key) > 12 else ("(未设置)" if not key else "***")
+            self.chat.append(
+                "Loki",
+                f"对话后端: {self.cfg.get('backend', 'cli')}<br>"
+                f"API 地址: {self.cfg.get('api_base', '')}<br>"
+                f"模型: {self.cfg.get('model', '')}<br>API key: {masked}<br>"
+                "修改: <code>/api 新key [接口地址] [模型名]</code>")
+            return
+        parts = arg.split()
+        self.cfg["api_key"] = parts[0]
+        if len(parts) > 1:
+            self.cfg["api_base"] = parts[1]
+        if len(parts) > 2:
+            self.cfg["model"] = parts[2]
+        self.cfg["backend"] = "api"
+        self.save_cfg()
+        self.chat.append("Loki", f"(自定义 API 已配置并启用: {self.cfg['api_base']}"
+                                 f" / {self.cfg['model']},key 已保存在本地 config.json)")
+
     def set_cli_model(self, model: str):
         self.cfg["cli_model"] = model
         self.save_cfg()
@@ -681,8 +726,18 @@ class PetWindow(QWidget):
         away_act.setChecked(mail_notify.away_mode_active())
         away_act.toggled.connect(self.set_away_mode)
         menu.addAction(away_act)
+        # 对话后端: 宿主 agent CLI(默认) / 用户自备的便宜 API(DeepSeek 等)
+        backend_menu = menu.addMenu("对话后端")
+        cur_backend = self.cfg.get("backend", "cli")
+        for label, value in (("宿主 Agent(默认)", "cli"),
+                             ("自定义 API(DeepSeek 等)", "api")):
+            act = QAction(label, backend_menu)
+            act.setCheckable(True)
+            act.setChecked(value == cur_backend)
+            act.triggered.connect(lambda _=False, v=value: self.set_backend(v))
+            backend_menu.addAction(act)
         # 聊天模型选择(仅 cli 后端): 闲聊用便宜模型,省宿主额度
-        model_menu = menu.addMenu("聊天模型")
+        model_menu = menu.addMenu("聊天模型(宿主后端)")
         current = self.cfg.get("cli_model", "")
         for label, value in (("Haiku(最省)", "haiku"), ("Sonnet(推荐)", "sonnet"),
                              ("Opus(贵)", "opus"), ("跟随宿主默认", "")):
