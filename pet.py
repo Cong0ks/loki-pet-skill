@@ -294,6 +294,10 @@ class ChatPanel(QWidget):
             self.input.clear()
             self.pet.handle_api_command(text[len("/api"):].strip())
             return
+        if text.startswith("/face"):
+            self.input.clear()
+            self.pet.open_studio()
+            return
         if self.worker and self.worker.isRunning():
             return
         self.input.clear()
@@ -592,12 +596,20 @@ class PetWindow(QWidget):
         self.load_appearance()
 
     def open_studio(self):
-        if self._studio is None:
-            self._studio = EmoteStudio(current=self.cfg.get("emote", ""))
-            self._studio.emote_applied.connect(self.apply_emote)
-        self._studio.show()
-        self._studio.raise_()
-        self._studio.activateWindow()
+        try:
+            if self._studio is None:
+                self._studio = EmoteStudio(current=self.cfg.get("emote", ""))
+                self._studio.emote_applied.connect(self.apply_emote)
+            self._studio.show()
+            # 移到主屏中央,排除多显示器/越界坐标导致的"看不见"
+            geo = self._studio.frameGeometry()
+            geo.moveCenter(QApplication.primaryScreen().availableGeometry().center())
+            self._studio.move(geo.topLeft())
+            self._studio.raise_()
+            self._studio.activateWindow()
+        except Exception as e:  # noqa: BLE001
+            self.chat.append("Loki", f"(表情工坊打开失败: {e})")
+            self.show_chat()
 
     def set_backend(self, backend: str):
         self.cfg["backend"] = backend
@@ -764,6 +776,17 @@ class PetWindow(QWidget):
 
 
 def main():
+    # 宠物以隐藏进程运行,未捕获异常写入日志便于排查
+    import traceback
+    err_log = Path.home() / ".loki-pet" / "pet_error.log"
+
+    def excepthook(tp, val, tb):
+        err_log.parent.mkdir(parents=True, exist_ok=True)
+        with open(err_log, "a", encoding="utf-8") as f:
+            f.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+            traceback.print_exception(tp, val, tb, file=f)
+
+    sys.excepthook = excepthook
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     if not SPRITE_PATH.exists():

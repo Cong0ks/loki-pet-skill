@@ -2,6 +2,14 @@
 
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.7.2] - 2026-07-06
+
+### Fixed
+
+- 根治弹窗不可见问题:此前用 `Start-Process python -WindowStyle Hidden` 启动宠物,Windows 会把"隐藏"启动标志应用到进程随后弹出的第一个常规窗口(表情工坊/邮箱输入框),导致 `isVisible()` 为真但窗口实际被隐藏。启动方式改为 `pythonw`(无控制台,无需隐藏标志),SKILL.md 已更新并注明原因
+- 聊天框新增 `/face` 命令:直接打开表情工坊,与右键菜单等效
+- 表情工坊打开失败时错误显示在聊天框;未捕获异常写入 `~/.loki-pet/pet_error.log`;工坊窗口强制移到主屏中央
+
 ## [1.7.1] - 2026-07-06
 
 ### Fixed
