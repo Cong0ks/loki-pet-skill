@@ -611,7 +611,9 @@ class PetWindow(QWidget):
                 self.run_mail(mail_notify.send_notify_email,
                               self.cfg["notify_email"], "定时提醒", t["text"])
             return
-        self.chat.append("Loki", f"⏰ 到点啦!让本体继续干活: {t['text']}")
+        self.chat.append("Loki", f"⏰ 到点啦!让本体继续干活: {t['text']}<br>"
+                                 "<span style='color:#999'>已在后台启动,"
+                                 "会话越长跑得越久(几分钟到更久),完成我会通知你~</span>")
         self.show_chat()
         self.speak("到点啦,我去叫本体继续干活!")
         worker = MailWorker(run_continuation, self.cfg, t)
