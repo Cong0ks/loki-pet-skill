@@ -56,6 +56,7 @@ pip install -r requirements.txt
 | `notify_email` | 离开模式通知邮箱(首次开启弹框填写,聊天框 `/email 新地址` 可改) |
 | `risk_notes` | 授权风险注解开关(默认开) |
 | `chat_width` / `chat_height` | 聊天框尺寸,拖拽右下角手柄调整后自动记住 |
+| `stop_notify_min_seconds` | 任务完成通知阈值(秒,默认 120):本轮耗时低于该值不通知 |
 
 常用中文音色: `zh-CN-YunxiNeural`(少年音,默认)、`zh-CN-XiaoxiaoNeural`(温柔女声)、`zh-CN-XiaoyiNeural`(活泼女声)。
 
@@ -125,7 +126,7 @@ powershell -ExecutionPolicy Bypass -File install_skill.ps1 -WithEmotes  # 连同
 - **弹授权提示时**:宠物弹出请求详情 + 语音提醒,聊天框出现四个按钮——`允许` / `Yes 15分钟` / `拒绝` / `忽略`;25 秒内没点则回落到终端正常授权
 - **风险小注解** 🔎:每条授权请求会由便宜模型(宿主后端固定用 Haiku)自动生成一句人话说明——"这条命令会做什么 + [低/中/高风险]",看不懂命令也能放心决策;离席邮件里同样附带。`risk_notes: false` 可关闭
 - **临时授权**:点 `Yes 15分钟` 或右键菜单"自动帮按 Yes",15 分钟内所有命令自动放行
-- **任务完成 / 等待输入**:宠物弹泡泡通知(完成通知不朗读,避免打扰)
+- **任务完成 / 等待输入**:宠物弹泡泡通知(完成通知不朗读,避免打扰)。只有本轮耗时超过 `stop_notify_min_seconds`(默认 120 秒)的**长任务**才通知并显示耗时,快问快答不打扰;另有 45 秒冷却防多会话连环轰炸
 - 宠物没运行时 hooks 静默跳过,零干扰
 
 hooks 配置在 `~/.claude/settings.json`(PreToolUse 快速放行 + PermissionRequest 阻塞等待 + Notification / Stop 通知),配置示例见 `hook_bridge.py` 文件头注释。

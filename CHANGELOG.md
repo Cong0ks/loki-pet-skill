@@ -2,6 +2,12 @@
 
 本项目版本迭代记录,格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [1.9.2] - 2026-07-06
+
+### Fixed
+
+- 修复"任务完成"通知轰炸:Stop hook 在每轮回复结束都会触发,快速对话时宠物连环报"任务完成"。现通过新增 UserPromptSubmit hook 记录每轮开始时间,只有耗时 ≥ `stop_notify_min_seconds`(默认 120 秒)的长任务才通知(并显示耗时),另加 45 秒全局冷却;离席邮件同样遵循该过滤
+
 ## [1.9.1] - 2026-07-06
 
 ### Added

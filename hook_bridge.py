@@ -141,9 +141,24 @@ def main():
     elif event == "notification" and pet_alive():
         send({"id": uuid.uuid4().hex[:12], "type": "notify", "ts": time.time(),
               "text": str(payload.get("message", "Claude 在等你哦"))[:200]})
+    elif event == "promptsubmit":
+        # 记录本轮开始时间,供 stop 事件计算轮次耗时
+        sid = str(payload.get("session_id", "unknown"))[:32]
+        turns = BRIDGE_DIR / "turns"
+        turns.mkdir(parents=True, exist_ok=True)
+        (turns / f"{sid}.txt").write_text(str(time.time()), encoding="utf-8")
     elif event == "stop" and pet_alive():
+        # 计算本轮耗时: 只有长任务才值得打扰用户(由宠物按阈值过滤)
+        sid = str(payload.get("session_id", "unknown"))[:32]
+        turn_file = BRIDGE_DIR / "turns" / f"{sid}.txt"
+        duration = -1.0
+        try:
+            duration = time.time() - float(turn_file.read_text(encoding="utf-8"))
+            turn_file.unlink()
+        except (OSError, ValueError):
+            pass
         send({"id": uuid.uuid4().hex[:12], "type": "stop", "ts": time.time(),
-              "text": "Claude 任务完成啦!"})
+              "duration": round(duration), "text": "Claude 任务完成啦!"})
 
 
 if __name__ == "__main__":

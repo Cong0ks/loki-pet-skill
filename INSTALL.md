@@ -163,10 +163,18 @@ skill 安装路径,如 Windows 的 `C:\\Users\\你的用户名\\.claude\\skills\
       "hooks": [{ "type": "command", "command": "python",
                   "args": ["<SKILL_DIR>\\hook_bridge.py", "--event", "stop"],
                   "timeout": 10, "async": true }]
+    }],
+    "UserPromptSubmit": [{
+      "hooks": [{ "type": "command", "command": "python",
+                  "args": ["<SKILL_DIR>\\hook_bridge.py", "--event", "promptsubmit"],
+                  "timeout": 10, "async": true }]
     }]
   }
 }
 ```
+
+UserPromptSubmit 用于记录每轮开始时间,让"任务完成"通知只在长任务(默认 ≥120 秒,
+`stop_notify_min_seconds` 可调)时触发;不配置它则每轮结束都会通知。
 
 说明:PermissionRequest 的 920 秒超时是为离开模式的邮件审批预留(最长等 15 分钟);
 宠物未运行时所有 hook 会立即静默返回,不影响正常使用。

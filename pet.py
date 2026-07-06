@@ -74,6 +74,8 @@ DEFAULT_CONFIG = {
     # 聊天框尺寸(拖拽右下角手柄调整后自动记住)
     "chat_width": 300,
     "chat_height": 260,
+    # 任务完成通知阈值(秒): 本轮耗时低于该值不通知,过滤快问快答
+    "stop_notify_min_seconds": 120,
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
@@ -460,6 +462,7 @@ class PetWindow(QWidget):
 
         # 离开模式: 授权请求转发邮件,每 60 秒查一次回复
         self.pending_emails: dict = {}  # req_id -> 发出时间
+        self._last_stop_note = 0.0
         self._mail_workers: list = []
         self.mail_timer = QTimer(self)
         self.mail_timer.timeout.connect(self.poll_mail_replies)
@@ -547,13 +550,23 @@ class PetWindow(QWidget):
             self.show_chat()
             self.speak("Claude 在叫你啦!")
         elif kind == "stop":
-            self.chat.append("Claude", msg.get("text", ""))
+            # 只报"长任务"完成: 快问快答的每轮结束不打扰(duration<0 表示
+            # 未配置 UserPromptSubmit hook,无法计时,保持旧行为全部通知)
+            duration = float(msg.get("duration", -1))
+            threshold = int(self.cfg.get("stop_notify_min_seconds", 120))
+            if 0 <= duration < threshold:
+                return
+            if time.time() - self._last_stop_note < 45:
+                return  # 冷却: 防止多会话同时完成时连环轰炸
+            self._last_stop_note = time.time()
+            mins = f"(耗时 {int(duration // 60)} 分钟)" if duration > 0 else ""
+            self.chat.append("Claude", msg.get("text", "") + mins)
             self.show_chat()  # 任务完成只弹泡泡,不朗读,避免频繁打扰
             self.play_sfx()
             if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
                 self.run_mail(mail_notify.send_notify_email,
                               self.cfg["notify_email"], "任务完成",
-                              msg.get("text", "Claude 任务完成啦!"))
+                              msg.get("text", "Claude 任务完成啦!") + mins)
 
     def on_risk_note(self, msg: dict, note: str):
         if note:
