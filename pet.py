@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import edge_tts
@@ -39,7 +41,39 @@ INBOX = BRIDGE_DIR / "inbox"
 REPLIES = BRIDGE_DIR / "replies"
 TEMP_AUTH = BRIDGE_DIR / "temp_auth.json"
 HEARTBEAT = BRIDGE_DIR / "heartbeat"
+TASKS_PATH = BRIDGE_DIR / "tasks.json"
+LAST_SESSION = BRIDGE_DIR / "last_session.json"
 TEMP_AUTH_MINUTES = 15
+
+
+def parse_when(token: str):
+    """解析计划时间: HH:MM(已过则算明天) 或 +Nm/+Nh,失败返回 None。"""
+    m = re.fullmatch(r"\+(\d+)([hm])", token)
+    if m:
+        return time.time() + int(m.group(1)) * (3600 if m.group(2) == "h" else 60)
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", token)
+    if m and int(m.group(1)) < 24 and int(m.group(2)) < 60:
+        now = datetime.now()
+        target = now.replace(hour=int(m.group(1)), minute=int(m.group(2)),
+                             second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        return target.timestamp()
+    return None
+
+
+def run_continuation(cfg: dict, task: dict) -> str:
+    """到点续跑: 在记录的项目目录里让宿主恢复最近会话继续任务(后台线程)。"""
+    cmd = cfg.get("task_cli", "claude --continue -p")
+    instr = task.get("text", "继续执行之前的任务")
+    proc = subprocess.run(
+        f'{cmd} "{instr}"', shell=True, cwd=task.get("cwd") or None,
+        capture_output=True, text=True, encoding="utf-8", timeout=14400,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            (proc.stderr or proc.stdout or "宿主 CLI 调用失败").strip()[:200])
+    return (proc.stdout or "").strip()[-300:]
 
 DEFAULT_CONFIG = {
     # backend: "api" = HTTP 调 OpenAI 兼容接口; "cli" = 调宿主 agent 命令行
@@ -76,6 +110,8 @@ DEFAULT_CONFIG = {
     "chat_height": 260,
     # 任务完成通知阈值(秒): 本轮耗时低于该值不通知,过滤快问快答
     "stop_notify_min_seconds": 120,
+    # 计划任务续跑用的宿主命令(/task 到点时执行,追加任务指令)
+    "task_cli": "claude --continue -p",
 }
 
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+\.[\w.-]+$")
@@ -378,6 +414,10 @@ class ChatPanel(QWidget):
             self.input.clear()
             self.pet.open_studio()
             return
+        if text.startswith("/task"):
+            self.input.clear()
+            self.pet.handle_task_command(text[len("/task"):].strip())
+            return
         if self.worker and self.worker.isRunning():
             return
         self.input.clear()
@@ -481,6 +521,122 @@ class PetWindow(QWidget):
         self.shuffle_timer.timeout.connect(self.shuffle_emote)
         if self.cfg.get("emote_shuffle"):
             self.shuffle_timer.start(self.shuffle_interval_ms())
+
+        # 计划任务: 每 30 秒检查一次到期任务(重启不丢,存 tasks.json)
+        self.tasks_timer = QTimer(self)
+        self.tasks_timer.timeout.connect(self.check_tasks)
+        self.tasks_timer.start(30000)
+
+    # ---- 计划任务 ----
+    def load_tasks(self) -> list:
+        try:
+            return json.loads(TASKS_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return []
+
+    def save_tasks(self, tasks: list):
+        TASKS_PATH.write_text(json.dumps(tasks, ensure_ascii=False, indent=1),
+                              encoding="utf-8")
+
+    def handle_task_command(self, arg: str):
+        """聊天框 /task 命令: 查看/添加/删除计划任务。"""
+        tasks = self.load_tasks()
+        if not arg:
+            if not tasks:
+                self.chat.append("Loki", "当前没有计划任务~<br>"
+                                 "用法: <code>/task 15:00 继续跑测试</code>(到点让本体续跑)<br>"
+                                 "<code>/task +2h</code>(2小时后,默认继续之前任务)<br>"
+                                 "<code>/task 09:00 提醒 开晨会</code>(仅提醒)<br>"
+                                 "<code>/task del 1</code>(删除第1条)")
+                return
+            lines = []
+            for i, t in enumerate(tasks, 1):
+                when = time.strftime("%m-%d %H:%M", time.localtime(t["when"]))
+                kind = "提醒" if t["mode"] == "remind" else "续跑"
+                lines.append(f"{i}. [{kind}] {when} — {t['text']}")
+            self.chat.append("Loki", "<br>".join(lines))
+            return
+        if arg.startswith("del"):
+            try:
+                idx = int(arg[3:].strip()) - 1
+                removed = tasks.pop(idx)
+                self.save_tasks(tasks)
+                self.chat.append("Loki", f"(已删除计划任务: {removed['text']})")
+            except (ValueError, IndexError):
+                self.chat.append("Loki", "(没找到这条任务,/task 看看编号)")
+            return
+        parts = arg.split(None, 1)
+        when = parse_when(parts[0])
+        if when is None:
+            self.chat.append("Loki", "(时间没看懂~支持 15:00 或 +2h / +30m 格式)")
+            return
+        rest = parts[1].strip() if len(parts) > 1 else ""
+        if rest.startswith("提醒"):
+            mode, text, cwd = "remind", rest[2:].strip() or "时间到啦!", ""
+        else:
+            mode = "continue"
+            text = rest or "继续执行之前的任务"
+            try:
+                cwd = json.loads(LAST_SESSION.read_text(
+                    encoding="utf-8")).get("cwd", "")
+            except (OSError, ValueError):
+                cwd = ""
+        tasks.append({"id": uuid.uuid4().hex[:8], "when": when,
+                      "mode": mode, "text": text, "cwd": cwd})
+        self.save_tasks(tasks)
+        when_str = time.strftime("%m-%d %H:%M", time.localtime(when))
+        if mode == "remind":
+            self.chat.append("Loki", f"(记下啦!{when_str} 提醒你: {text})")
+        else:
+            where = f"<br>项目目录: {cwd}" if cwd else "<br>⚠️ 还没记录到项目目录,届时在宠物所在目录执行"
+            self.chat.append("Loki", f"(记下啦!{when_str} 让本体续跑: {text}{where})")
+
+    def check_tasks(self):
+        tasks = self.load_tasks()
+        due = [t for t in tasks if t["when"] <= time.time()]
+        if not due:
+            return
+        remaining = [t for t in tasks if t["when"] > time.time()]
+        self.save_tasks(remaining)
+        for t in due:
+            self.fire_task(t)
+
+    def fire_task(self, t: dict):
+        if t["mode"] == "remind":
+            self.chat.append("Loki", f"⏰ {t['text']}")
+            self.show_chat()
+            self.speak(t["text"])
+            self.play_sfx()
+            if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
+                self.run_mail(mail_notify.send_notify_email,
+                              self.cfg["notify_email"], "定时提醒", t["text"])
+            return
+        self.chat.append("Loki", f"⏰ 到点啦!让本体继续干活: {t['text']}")
+        self.show_chat()
+        self.speak("到点啦,我去叫本体继续干活!")
+        worker = MailWorker(run_continuation, self.cfg, t)
+        worker.done.connect(lambda out, task=t: self.on_task_done(task, out))
+        worker.failed.connect(lambda e, task=t: self.on_task_failed(task, e))
+        worker.start()
+        self._mail_workers.append(worker)
+
+    def on_task_done(self, t: dict, tail: str):
+        note = f"✅ 续跑完成: {t['text']}"
+        self.chat.append("Loki", f"{note}<br><span style='color:#999'>{tail[-160:]}</span>")
+        self.show_chat()
+        self.play_sfx()
+        if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
+            self.run_mail(mail_notify.send_notify_email,
+                          self.cfg["notify_email"], "计划任务完成",
+                          f"{t['text']}\n\n结尾输出:\n{tail}")
+
+    def on_task_failed(self, t: dict, err: str):
+        self.chat.append("Loki", f"❌ 续跑失败: {t['text']}<br>{err}")
+        self.show_chat()
+        if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
+            self.run_mail(mail_notify.send_notify_email,
+                          self.cfg["notify_email"], "计划任务失败",
+                          f"{t['text']}\n\n{err}")
 
     # ---- 表情随机轮播 ----
     def shuffle_interval_ms(self) -> int:

@@ -65,6 +65,8 @@ cd "$SKILL_DIR" && python emote_studio.py <视频路径> [表情名]
 | `stop_sound` | Claude 任务完成时播放的音效路径(空串关闭) |
 | `notify_email` | 离开模式通知邮箱;首次开启离开模式弹框填写并记住,聊天框 `/email 新地址` 可改 |
 | `risk_notes` | 授权风险注解开关(默认开):便宜模型生成一句"命令作用+风险等级",宠物与离席邮件中显示 |
+| `task_cli` | 计划任务续跑命令(默认 `claude --continue -p`);聊天框 `/task 15:00 指令` 登记,到点在最近会话目录续跑,`提醒`开头则仅通知 |
+| `stop_notify_min_seconds` | 任务完成通知阈值(秒,默认120),低于该时长的轮次不通知 |
 
 修改 config.json 后需重启宠物生效(表情/语音可在运行中通过右键菜单改)。
 

@@ -147,6 +147,12 @@ def main():
         turns = BRIDGE_DIR / "turns"
         turns.mkdir(parents=True, exist_ok=True)
         (turns / f"{sid}.txt").write_text(str(time.time()), encoding="utf-8")
+        # 记录最近活跃会话的工作目录,供宠物"计划任务续跑"定位项目
+        cwd = payload.get("cwd")
+        if cwd:
+            (BRIDGE_DIR / "last_session.json").write_text(
+                json.dumps({"cwd": str(cwd), "ts": time.time()},
+                           ensure_ascii=False), encoding="utf-8")
     elif event == "stop" and pet_alive():
         # 计算本轮耗时: 只有长任务才值得打扰用户(由宠物按阈值过滤)
         sid = str(payload.get("session_id", "unknown"))[:32]
