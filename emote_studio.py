@@ -141,6 +141,8 @@ class EmoteStudio(QDialog):
 
     def __init__(self, current: str = "", parent=None):
         super().__init__(parent)
+        # 置顶显示: 宠物进程在后台,普通窗口会被压在其他应用后面"看不见"
+        self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
         self.setWindowTitle("Loki 表情工坊")
         self.setFixedSize(520, 380)
         self.video_path = None
