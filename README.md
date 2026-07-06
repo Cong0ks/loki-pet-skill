@@ -147,3 +147,7 @@ pyinstaller --windowed --onefile --add-data "assets:assets" pet.py
 ```
 
 macOS 上产出 .app,Windows 上产出 .exe。注意 `config.json` 需与可执行文件放在同目录。
+
+## License
+
+[MIT](LICENSE)
