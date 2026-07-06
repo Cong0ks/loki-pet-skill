@@ -51,7 +51,7 @@ pip install -r requirements.txt
 | `tts_enabled` | 是否开启语音朗读(也可通过右键菜单切换) |
 | `tts_voice` | 朗读音色,完整列表: `python -m edge_tts --list-voices` |
 | `emote` | 当前使用的动态表情名,空串为静态图片(通过表情工坊设置) |
-| `emote_shuffle` / `emote_shuffle_minutes` | 表情随机轮播开关(右键菜单可切)与间隔分钟数,导入多个表情后每隔 N 分钟随机换装 |
+| `emote_shuffle` / `emote_shuffle_minutes` | 表情随机轮播开关与间隔分钟数(在表情工坊面板设置),多表情时定时随机换装 |
 | `stop_sound` | Claude 任务完成时播放的音效路径(默认自带捷报 BGM,空串关闭;换音乐见 [assets/sounds/README.md](assets/sounds/README.md)) |
 | `notify_email` | 离开模式通知邮箱(首次开启弹框填写,聊天框 `/email 新地址` 可改) |
 
@@ -80,7 +80,7 @@ python pet.py
 - 选择一段角色视频(mp4/mov/avi/webm/mkv),起个名字,点"转换并导入"
 - 自动逐帧去除纯色背景,生成透明 PNG 帧序列(原分辨率,清晰度无损),完成后立即生效
 - 面板中可预览(棋盘格显示透明区域)、切换表情、恢复静态图片、删除表情
-- 聊天框输入 `/face` 也可打开工坊;导入多个表情后,右键菜单"随机切换表情"可开启定时随机换装
+- 聊天框输入 `/face` 也可打开工坊;面板左下角"随机轮播"勾选后,每隔 N 分钟(可调)从已导入表情随机换装
 - 帧文件存放在 `assets/emotes/<表情名>/`,含 `meta.json`(帧率信息)
 
 抠图原理:以画面边界颜色为背景色,只去除与边界连通的背景区域——角色内部

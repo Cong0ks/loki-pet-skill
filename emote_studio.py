@@ -17,8 +17,9 @@ import numpy as np
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QColor, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMessageBox, QProgressBar, QPushButton, QVBoxLayout,
+    QCheckBox, QDialog, QFileDialog, QHBoxLayout, QLabel, QLineEdit,
+    QListWidget, QMessageBox, QProgressBar, QPushButton, QSpinBox,
+    QVBoxLayout,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -138,8 +139,10 @@ class ConvertWorker(QThread):
 class EmoteStudio(QDialog):
     """表情管理面板: 导入视频转表情、预览、应用、删除。"""
     emote_applied = Signal(str)  # 表情名; 空串表示恢复静态图片
+    shuffle_changed = Signal(bool, int)  # 随机轮播开关, 间隔分钟
 
-    def __init__(self, current: str = "", parent=None):
+    def __init__(self, current: str = "", shuffle_on: bool = False,
+                 shuffle_minutes: int = 5, parent=None):
         super().__init__(parent)
         # 置顶显示: 宠物进程在后台,普通窗口会被压在其他应用后面"看不见"
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
@@ -167,6 +170,21 @@ class EmoteStudio(QDialog):
         row.addWidget(static_btn)
         row.addWidget(del_btn)
         left.addLayout(row)
+
+        # 随机轮播: 多个表情时定时随机换装
+        shuffle_row = QHBoxLayout()
+        self.shuffle_box = QCheckBox("随机轮播,每")
+        self.shuffle_box.setChecked(shuffle_on)
+        self.interval_spin = QSpinBox()
+        self.interval_spin.setRange(1, 120)
+        self.interval_spin.setValue(max(1, shuffle_minutes))
+        self.interval_spin.setSuffix(" 分钟")
+        self.shuffle_box.toggled.connect(self._emit_shuffle)
+        self.interval_spin.valueChanged.connect(self._emit_shuffle)
+        shuffle_row.addWidget(self.shuffle_box)
+        shuffle_row.addWidget(self.interval_spin)
+        shuffle_row.addStretch()
+        left.addLayout(shuffle_row)
         root.addLayout(left, 1)
 
         # 右侧: 预览 + 导入新表情
@@ -194,6 +212,10 @@ class EmoteStudio(QDialog):
         root.addLayout(right, 1)
 
         self.refresh(select=current)
+
+    def _emit_shuffle(self, *_):
+        self.shuffle_changed.emit(
+            self.shuffle_box.isChecked(), self.interval_spin.value())
 
     def refresh(self, select: str = ""):
         self.emote_list.clear()

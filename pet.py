@@ -414,6 +414,17 @@ class PetWindow(QWidget):
         if candidates:
             self.apply_emote(random.choice(candidates))
 
+    def on_shuffle_changed(self, enabled: bool, minutes: int):
+        """表情工坊面板的轮播设置变化: 区分开关切换与仅调整间隔。"""
+        was = bool(self.cfg.get("emote_shuffle"))
+        self.cfg["emote_shuffle_minutes"] = max(1, minutes)
+        if enabled == was:  # 只改了间隔
+            self.save_cfg()
+            if enabled:
+                self.shuffle_timer.start(self.shuffle_interval_ms())
+            return
+        self.set_emote_shuffle(enabled)
+
     def set_emote_shuffle(self, enabled: bool):
         self.cfg["emote_shuffle"] = enabled
         self.save_cfg()
@@ -635,8 +646,13 @@ class PetWindow(QWidget):
     def open_studio(self):
         try:
             if self._studio is None:
-                self._studio = EmoteStudio(current=self.cfg.get("emote", ""))
+                self._studio = EmoteStudio(
+                    current=self.cfg.get("emote", ""),
+                    shuffle_on=bool(self.cfg.get("emote_shuffle")),
+                    shuffle_minutes=int(self.cfg.get("emote_shuffle_minutes", 5)),
+                )
                 self._studio.emote_applied.connect(self.apply_emote)
+                self._studio.shuffle_changed.connect(self.on_shuffle_changed)
             self._studio.show()
             # 移到主屏中央,排除多显示器/越界坐标导致的"看不见"
             geo = self._studio.frameGeometry()
@@ -765,12 +781,6 @@ class PetWindow(QWidget):
         studio_act = QAction("表情工坊…", menu)
         studio_act.triggered.connect(self.open_studio)
         menu.addAction(studio_act)
-        shuffle_act = QAction(
-            f"随机切换表情(每{self.cfg.get('emote_shuffle_minutes', 5)}分钟)", menu)
-        shuffle_act.setCheckable(True)
-        shuffle_act.setChecked(bool(self.cfg.get("emote_shuffle")))
-        shuffle_act.toggled.connect(self.set_emote_shuffle)
-        menu.addAction(shuffle_act)
         auth_act = QAction(f"自动帮按 Yes({TEMP_AUTH_MINUTES}分钟)", menu)
         auth_act.setCheckable(True)
         auth_act.setChecked(self.temp_auth_active())
