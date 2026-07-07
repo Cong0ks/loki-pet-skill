@@ -6,14 +6,14 @@
 
 | 文件 | 触发时机 | 对应配置项 |
 |---|---|---|
-| `task_end.mp3` | Claude Code 任务完成(Stop hook) | `stop_sound` |
+| `task_end.mp3` | Agent 长任务完成(Claude Code / Codex Stop hook) | `stop_sound` |
 
 ## 怎么换成自己的音效(三选一)
 
 1. **直接替换文件**:把你喜欢的音频改名为 `task_end.mp3` 覆盖本文件,重启宠物即可
 2. **改配置指向新文件**:把音频放进本目录(任意文件名),然后把 `config.json` 里的
    `stop_sound` 改为 `assets/sounds/你的文件名.mp3`
-3. **关闭音效**:`stop_sound` 设为空串 `""`
+3. **关闭音效**:右键菜单关闭"完成音效",或把 `stop_sound` 设为空串 `""`
 
 支持格式:mp3 / wav / ogg 等 QtMultimedia 支持的常见音频格式
 (Windows 10+ / macOS 自带解码器,无需额外安装)。

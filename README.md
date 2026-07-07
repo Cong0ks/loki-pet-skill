@@ -9,8 +9,8 @@
 - AI 对话(OpenAI 兼容接口,DeepSeek / Kimi / Qwen / 中转站均可)
 - 回复自动语音朗读(edge-tts 免费微软神经网络语音,无需 API key)
 - 动态表情:视频一键转透明背景帧动画,内置"表情工坊"面板管理
-- 可打包为 Agent Skill:聊天直接调用宿主 agent 的 CLI(如 `claude -p`),无需配置 API key
-- Claude Code 授权联动:权限请求转发到宠物,点按钮帮你按 Yes,支持 15 分钟临时授权
+- 可打包为 Agent Skill:聊天直接调用宿主 agent 的 CLI(如 `claude -p` / `codex exec`),无需配置 API key
+- Agent 授权联动:Claude Code / Codex 权限请求转发到宠物,点按钮帮你按 Yes,支持 15 分钟临时授权
 - 任务完成通知:弹泡泡 + 播放自定义音效(BGM)
 - 离开模式:授权请求转发邮件,回复 yes/no/15min 远程审批(腾讯 Agent Mail,可选)
 
@@ -48,8 +48,8 @@ pip install -r requirements.txt
 | 配置项 | 说明 |
 |---|---|
 | `backend` | 对话后端: `cli`(skill 版默认,走宿主 agent 额度) / `api`(自备便宜接口如 DeepSeek,与宿主流量完全分开);右键菜单"对话后端"可随时切换,即时生效 |
-| `cli_command` | cli 后端使用的命令,默认 `claude -p`(可换 `codex exec` 等) |
-| `cli_model` | cli 后端聊天模型:`haiku`/`sonnet`(默认)/`opus`,空串跟随宿主;闲聊用便宜模型省额度,右键菜单可切换 |
+| `cli_command` | cli 后端使用的命令,默认 `claude -p`(Codex skill 环境旧默认会自动迁移为 `codex exec`) |
+| `cli_model` | cli 后端聊天模型会按 `cli_command` 动态推荐并按省钱优先排序: Claude 默认 `haiku`; Codex 默认 `gpt5.4mini`; Gemini 默认 Flash;空串跟随宿主;右键菜单可切换 |
 | `api_base` / `api_key` / `model` | OpenAI 兼容接口信息(api 后端必填) |
 | `system_prompt` | Loki 的人设提示词 |
 | `pet_width` | 宠物显示宽度(像素) |
@@ -58,7 +58,8 @@ pip install -r requirements.txt
 | `tts_voice` | 朗读音色,完整列表: `python -m edge_tts --list-voices` |
 | `emote` | 当前使用的动态表情名,空串为静态图片(通过表情工坊设置) |
 | `emote_shuffle` / `emote_shuffle_minutes` | 表情随机轮播开关与间隔分钟数(在表情工坊面板设置),多表情时定时随机换装 |
-| `stop_sound` | Claude 任务完成时播放的音效路径(默认自带捷报 BGM,空串关闭;换音乐见 [assets/sounds/README.md](assets/sounds/README.md)) |
+| `stop_sound` | Agent 长任务完成时播放的音效路径(默认自带捷报 BGM,空串关闭;换音乐见 [assets/sounds/README.md](assets/sounds/README.md)) |
+| `sfx_enabled` | 完成音效总开关,右键菜单"完成音效"可切换 |
 | `notify_email` | 离开模式通知邮箱(首次开启弹框填写,聊天框 `/email 新地址` 可改) |
 | `risk_notes` | 授权风险注解开关(默认开) |
 | `chat_width` / `chat_height` | 聊天框尺寸,拖拽右下角手柄调整后自动记住 |
@@ -121,26 +122,26 @@ python pet.py
 
 ## 作为 Agent Skill 使用
 
-把整个宠物打包成 [Agent Skills](https://code.claude.com/docs/en/skills) 标准格式,任何支持该标准的 agent(Claude Code 等)都能直接调度它:
+把整个宠物打包成 Agent Skills 标准格式,任何支持该标准的 agent(Claude Code / Codex 等)都能直接调度它:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install_skill.ps1            # 安装/同步代码
 powershell -ExecutionPolicy Bypass -File install_skill.ps1 -WithEmotes  # 连同已转换的表情
 ```
 
-安装到 `~/.claude/skills/loki-pet/` 后,在 agent 会话里说"启动桌宠""帮我把这个视频转成表情"即可。skill 版默认 `backend: cli`——聊天通过 `claude -p` 走宿主 agent 的登录账号额度,**不需要单独配置任何 API key**;宿主不是 Claude Code 时改 `cli_command` 为对应命令(如 `codex exec`)。skill 定义源文件在 `skill/` 目录。
+安装到 agent 的 skills 目录后,在会话里说"启动桌宠""帮我把这个视频转成表情"即可。skill 版默认 `backend: cli`——聊天通过宿主 agent CLI 走其登录账号额度,**不需要单独配置任何 API key**。安装在 `.codex/skills/` 下且仍是旧默认 `claude -p` 时,启动会自动迁移为 `codex exec` + `gpt5.4mini`。skill 定义源文件在 `skill/` 目录。
 
-## Claude Code 授权联动(帮按 Yes)
+## Agent 授权联动(帮按 Yes)
 
-通过 hooks 把 Claude Code 的权限请求/通知转发给宠物(桥接脚本 `hook_bridge.py`,通信走 `~/.loki-pet/` 文件队列):
+通过 hooks 把 Claude Code / Codex 的权限请求/通知转发给宠物(桥接脚本 `hook_bridge.py` / `codex_hook_bridge.py`,通信走 `~/.loki-pet/` 文件队列):
 
-- **弹授权提示时**:宠物弹出请求详情 + 语音提醒,聊天框出现四个按钮——`允许` / `Yes 15分钟` / `拒绝` / `忽略`;**5 分钟**内没点则静默回落到终端授权,宠物端按钮悄悄收起(不弹打扰性提示),之后去终端处理即可
+- **弹授权提示时**:宠物弹出请求详情 + 语音提醒(如 Codex 环境说"你的 Codex 在找你"),聊天框出现四个按钮——`允许` / `Yes 15分钟` / `拒绝` / `忽略`;**5 分钟**内没点则静默回落到终端授权,宠物端按钮悄悄收起(不弹打扰性提示),之后去终端处理即可
 - **风险小注解** 🔎:每条授权请求会由便宜模型(宿主后端固定用 Haiku)自动生成一句人话说明——"这条命令会做什么 + [低/中/高风险]",看不懂命令也能放心决策;离席邮件里同样附带。`risk_notes: false` 可关闭
 - **临时授权**:点 `Yes 15分钟` 或右键菜单"自动帮按 Yes",15 分钟内所有命令自动放行
-- **任务完成 / 等待输入**:宠物弹泡泡通知(完成通知不朗读,避免打扰)。只有本轮耗时超过 `stop_notify_min_seconds`(默认 120 秒)的**长任务**才通知并显示耗时,快问快答不打扰;另有 45 秒冷却防多会话连环轰炸
+- **任务完成 / 等待输入**:宠物按真实 Agent 显示来源(如"Codex 任务完成啦!"),完成通知不朗读。只有本轮耗时超过 `stop_notify_min_seconds`(默认 120 秒)的**长任务**才通知并播放音效,快问快答和小阶段结束不打扰;另有 45 秒冷却防多会话连环轰炸
 - 宠物没运行时 hooks 静默跳过,零干扰
 
-hooks 配置在 `~/.claude/settings.json`(PreToolUse 快速放行 + PermissionRequest 阻塞等待 + Notification / Stop 通知),配置示例见 `hook_bridge.py` 文件头注释。
+Claude hooks 配置在 `~/.claude/settings.json`。Codex hooks 运行 `python install_codex_hooks.py` 合并到 `~/.codex/hooks.json`,然后在 Codex 里用 `/hooks` 审核并 trust 新增 hooks 后生效。
 
 > ⚠️ 临时授权 = 15 分钟内自动批准**所有**工具调用(含删文件等危险命令),请只在自己盯着任务时使用。
 

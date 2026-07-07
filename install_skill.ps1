@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force $dst | Out-Null
 New-Item -ItemType Directory -Force "$dst\assets" | Out-Null
 
 # 程序与 skill 定义
-Copy-Item "$src\pet.py", "$src\emote_studio.py", "$src\hook_bridge.py", "$src\mail_notify.py", "$src\handoff.py", "$src\requirements.txt" $dst -Force
+Copy-Item "$src\pet.py", "$src\emote_studio.py", "$src\hook_bridge.py", "$src\codex_hook_bridge.py", "$src\install_codex_hooks.py", "$src\mail_notify.py", "$src\handoff.py", "$src\requirements.txt" $dst -Force
 Copy-Item "$src\skill\SKILL.md" $dst -Force
 # config.json 仅在目标不存在时写入,避免覆盖用户已有配置
 if (-not (Test-Path "$dst\config.json")) {
@@ -26,6 +26,10 @@ if (Test-Path "$src\assets\sounds") {
 if ($WithEmotes -and (Test-Path "$src\assets\emotes")) {
     Copy-Item "$src\assets\emotes" "$dst\assets" -Recurse -Force
 }
+if (Test-Path "$src\tests") {
+    New-Item -ItemType Directory -Force "$dst\tests" | Out-Null
+    Copy-Item "$src\tests\*.py" "$dst\tests" -Force
+}
 
 Write-Host "已安装到 $dst"
-Write-Host "其他支持 Agent Skills 的工具,把该目录拷到其 skills 目录即可。"
+Write-Host "其他支持 Agent Skills 的工具,把该目录拷到其 skills 目录即可。Codex hooks 可在目标目录运行 python install_codex_hooks.py。"

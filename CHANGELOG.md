@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.12.1] - 2026-07-07
+
+### Added
+
+- Codex 专用 hooks:新增 `codex_hook_bridge.py` 与 `install_codex_hooks.py`,合并写入 `~/.codex/hooks.json`,不覆盖 Claude hooks;安装后需在 Codex 执行 `/hooks` 并 trust。
+- 宿主模型菜单按 Agent 动态推荐:Claude 显示 Haiku / Sonnet / Opus / 跟随宿主;Codex 显示 `GPT-5.4 Mini(最省)` / 跟随宿主;安装在 `.codex/skills/` 且仍是旧默认 `claude -p` 时自动迁移为 `codex exec` + `gpt5.4mini`。
+- 授权等待语音按 Agent 显示,例如 Codex 权限请求会提示"你的 Codex 在找你"。
+
+### Fixed
+
+- 修复 Codex 权限请求、等待通知、任务完成通知仍显示 `Claude:` 的问题,现在按真实 Agent 显示。
+- 修复 Stop hook 在小阶段结束时播放完成音效的问题:只有整轮长任务完成才通知并播放音效;Codex 文案为"Codex 任务完成啦!"。
+- 新增右键菜单"完成音效"总开关,并同步到 skill 配置模板与文档。
+
 ## [1.12.0] - 2026-07-07
 
 ### Added

@@ -8,6 +8,7 @@ Loki 幽灵桌面宠物 — 跨平台 (Windows / macOS)
 import asyncio
 import json
 import math
+import os
 import random
 import re
 import subprocess
@@ -46,6 +47,126 @@ TASKS_PATH = BRIDGE_DIR / "tasks.json"
 LAST_SESSION = BRIDGE_DIR / "last_session.json"
 TEMP_AUTH_MINUTES = 15
 
+CLI_MODEL_CHOICES = {
+    "claude": [
+        ("Haiku(最省)", "haiku"),
+        ("Sonnet(推荐)", "sonnet"),
+        ("Opus(贵)", "opus"),
+        ("跟随宿主默认", ""),
+    ],
+    "codex": [
+        ("GPT-5.4 Mini(最省)", "gpt5.4mini"),
+        ("跟随宿主默认", ""),
+    ],
+    "gemini": [
+        ("Gemini Flash(最省)", "gemini-2.5-flash"),
+        ("Gemini Pro", "gemini-2.5-pro"),
+        ("跟随宿主默认", ""),
+    ],
+}
+
+
+def detect_cli_agent(cli_command: str) -> str:
+    """根据宿主命令判断 Agent 类型,用于模型菜单和参数拼接。"""
+    cmd = (cli_command or "").strip().lower()
+    if re.match(r"^(claude)(\s|$)", cmd):
+        return "claude"
+    if re.match(r"^(codex)(\s|$)", cmd):
+        return "codex"
+    if re.match(r"^(gemini)(\s|$)", cmd):
+        return "gemini"
+    return "unknown"
+
+
+def detect_host_agent(base_dir: Path = BASE_DIR, environ: dict | None = None) -> str:
+    """从运行环境/安装路径推断宿主 Agent。"""
+    env = environ if environ is not None else os.environ
+    if env.get("CODEX_HOME") or env.get("CODEX_SANDBOX"):
+        return "codex"
+    path = str(base_dir).replace("\\", "/").lower()
+    if "/.codex/skills/" in path or path.endswith("/.codex/skills/loki-pet"):
+        return "codex"
+    if "/.claude/" in path:
+        return "claude"
+    return "unknown"
+
+
+def normalize_cli_settings(
+        cfg: dict, base_dir: Path = BASE_DIR, environ: dict | None = None) -> bool:
+    """按宿主环境修正旧 CLI 配置;返回是否发生变化。"""
+    if cfg.get("backend", "api") != "cli":
+        return False
+
+    changed = False
+    cmd = cfg.get("cli_command", "claude -p")
+    host_agent = detect_host_agent(base_dir, environ)
+    if host_agent == "codex" and cmd.strip() == "claude -p":
+        cfg["cli_command"] = "codex exec"
+        cmd = cfg["cli_command"]
+        changed = True
+
+    old_model = cfg.get("cli_model", "")
+    if "cli_model" not in cfg:
+        cfg["cli_model"] = default_cli_model(cmd)
+        changed = True
+    else:
+        cfg["cli_model"] = normalize_cli_model(cmd, old_model)
+        changed = changed or cfg["cli_model"] != old_model
+    return changed
+
+
+def recommended_cli_models(cli_command: str) -> list[tuple[str, str]]:
+    """返回当前宿主 Agent 的模型选项,按省钱优先排序。"""
+    return CLI_MODEL_CHOICES.get(
+        detect_cli_agent(cli_command),
+        [("跟随宿主默认", "")],
+    )
+
+
+def default_cli_model(cli_command: str) -> str:
+    """返回当前宿主 Agent 的默认模型;空串表示跟随宿主默认。"""
+    return recommended_cli_models(cli_command)[0][1]
+
+
+def normalize_cli_model(cli_command: str, cli_model: str) -> str:
+    """旧配置换宿主 Agent 后,把无效模型回退到该 Agent 的最省钱推荐。"""
+    model = (cli_model or "").strip()
+    if not model:
+        return ""
+    valid_models = {value for _label, value in recommended_cli_models(cli_command)}
+    if model in valid_models:
+        return model
+    return default_cli_model(cli_command)
+
+
+def build_cli_command(cli_command: str, cli_model: str) -> str:
+    """按 Agent 类型拼接模型参数;未知 Agent 不追加参数。"""
+    cmd = cli_command or "claude -p"
+    model = (cli_model or "").strip()
+    if not model:
+        return cmd
+    if detect_cli_agent(cmd) in {"claude", "codex", "gemini"}:
+        return f"{cmd} --model {model}"
+    return cmd
+
+
+def stop_actions(duration: float, threshold: int, seconds_since_last: float) -> dict:
+    """Stop hook 动作: 只有真正完成通知才播放音效。"""
+    notify = duration < 0 or duration >= threshold
+    if seconds_since_last < 45:
+        notify = False
+    return {"play_sound": notify, "notify": notify}
+
+
+def agent_label(msg: dict) -> str:
+    """聊天框里显示真实宿主 Agent,兼容旧消息默认 Claude。"""
+    return "Codex" if str(msg.get("agent", "")).lower() == "codex" else "Claude"
+
+
+def approval_voice_prompt(msg: dict) -> str:
+    """授权弹窗等待用户确认时的语音提示。"""
+    return f"你的 {agent_label(msg)} 在找你"
+
 
 def parse_when(token: str):
     """解析计划时间: HH:MM(已过则算明天) 或 +Nm/+Nh,失败返回 None。"""
@@ -82,8 +203,8 @@ DEFAULT_CONFIG = {
     "backend": "api",
     "cli_command": "claude -p",
     # cli 后端使用的模型: 宠物闲聊用便宜模型即可,不要浪费宿主的高级模型额度
-    # 可选 haiku / sonnet / opus,空串 = 跟随宿主默认;也可右键菜单切换
-    "cli_model": "sonnet",
+    # 模型按宿主 Agent 动态推荐,默认取最省钱项;空串 = 跟随宿主默认
+    "cli_model": "haiku",
     "api_base": "https://api.deepseek.com/v1",
     "api_key": "sk-你的key",
     "model": "deepseek-chat",
@@ -101,6 +222,8 @@ DEFAULT_CONFIG = {
     "emote_shuffle_minutes": 5,
     # Claude 任务完成时播放的音效(相对本目录;空串关闭)
     "stop_sound": "assets/sounds/task_end.mp3",
+    # 完成音效总开关(右键菜单可切换,不改动 stop_sound 路径)
+    "sfx_enabled": True,
     # 离开模式的通知邮箱(经 agently-cli 发送,回复 yes/no/15min 即远程授权)
     # 首次开启离开模式时弹框填写并记住;聊天框输入 /email 新地址 可随时修改
     "notify_email": "",
@@ -134,8 +257,7 @@ def cheap_complete(cfg: dict, prompt: str, max_tokens: int = 200) -> str:
     """用便宜模型跑一个小提示词(风险注解/记忆提炼共用,后台线程中调用)。"""
     if cfg.get("backend", "cli") != "api":
         cmd = cfg.get("cli_command", "claude -p")
-        if cmd.startswith("claude"):
-            cmd += " --model haiku"  # 杂务固定用最便宜的模型
+        cmd = build_cli_command(cmd, default_cli_model(cmd))
         proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
                               encoding="utf-8", shell=True, timeout=90)
         text = (proc.stdout or "").strip()
@@ -279,6 +401,11 @@ def load_config() -> dict:
             json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+    if normalize_cli_settings(cfg):
+        CONFIG_PATH.write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     return cfg
 
 
@@ -318,8 +445,7 @@ class ChatWorker(QThread):
                 lines.append(f"{who}: {m['content']}")
         cmd = self.cfg.get("cli_command", "claude -p")
         model = self.cfg.get("cli_model", "").strip()
-        if model and cmd.startswith("claude"):
-            cmd += f" --model {model}"
+        cmd = build_cli_command(cmd, model)
         proc = subprocess.run(
             cmd,
             input="\n".join(lines),
@@ -477,7 +603,7 @@ class ChatPanel(QWidget):
         self.pet.save_cfg()
 
     def show_approval(self, msg: dict):
-        self.append("Claude", f'想执行 <code>{msg["tool"]}: {msg["text"]}</code>')
+        self.append(agent_label(msg), f'想执行 <code>{msg["tool"]}: {msg["text"]}</code>')
         self.pending_id = msg["id"]
         # 兜底过期时刻: 桥接被中断收不到 cancel 时,按钮也会静默消失
         wait = 900 if mail_notify.away_mode_active() else 300
@@ -973,7 +1099,7 @@ class PetWindow(QWidget):
         if kind == "permission":
             self.chat.show_approval(msg)
             self.show_chat()
-            self.speak("有命令等你批准哦!")
+            self.speak(approval_voice_prompt(msg))
             # 风险注解生成后再发离席邮件,让注解一并写进邮件正文
             if self.cfg.get("risk_notes", True):
                 worker = MailWorker(generate_risk_note, self.cfg,
@@ -1002,23 +1128,25 @@ class PetWindow(QWidget):
             worker.start()
             self._mail_workers.append(worker)
         elif kind == "notify":
-            self.chat.append("Claude", msg.get("text", ""))
+            label = agent_label(msg)
+            self.chat.append(label, msg.get("text", ""))
             self.show_chat()
-            self.speak("Claude 在叫你啦!")
+            self.speak(f"{label} 在叫你啦!")
         elif kind == "stop":
             # 只报"长任务"完成: 快问快答的每轮结束不打扰(duration<0 表示
             # 未配置 UserPromptSubmit hook,无法计时,保持旧行为全部通知)
             duration = float(msg.get("duration", -1))
             threshold = int(self.cfg.get("stop_notify_min_seconds", 120))
-            if 0 <= duration < threshold:
+            actions = stop_actions(
+                duration, threshold, time.time() - self._last_stop_note)
+            if not actions["notify"]:
                 return
-            if time.time() - self._last_stop_note < 45:
-                return  # 冷却: 防止多会话同时完成时连环轰炸
             self._last_stop_note = time.time()
             mins = f"(耗时 {int(duration // 60)} 分钟)" if duration > 0 else ""
-            self.chat.append("Claude", msg.get("text", "") + mins)
+            self.chat.append(agent_label(msg), msg.get("text", "") + mins)
             self.show_chat()  # 任务完成只弹泡泡,不朗读,避免频繁打扰
-            self.play_sfx()
+            if actions["play_sound"]:
+                self.play_sfx()
             if mail_notify.away_mode_active() and self.cfg.get("notify_email"):
                 self.run_mail(mail_notify.send_notify_email,
                               self.cfg["notify_email"], "任务完成",
@@ -1134,6 +1262,8 @@ class PetWindow(QWidget):
         self.show_chat()
 
     def play_sfx(self):
+        if not self.cfg.get("sfx_enabled", True):
+            return
         sound = self.cfg.get("stop_sound", "")
         if not sound:
             return
@@ -1218,6 +1348,10 @@ class PetWindow(QWidget):
 
     def set_backend(self, backend: str):
         self.cfg["backend"] = backend
+        if backend == "cli":
+            cmd = self.cfg.get("cli_command", "claude -p")
+            self.cfg["cli_model"] = normalize_cli_model(
+                cmd, self.cfg.get("cli_model", ""))
         self.save_cfg()
         if backend == "api":
             if self.cfg.get("api_key"):
@@ -1356,8 +1490,8 @@ class PetWindow(QWidget):
         # 聊天模型选择(仅 cli 后端): 闲聊用便宜模型,省宿主额度
         model_menu = menu.addMenu("聊天模型(宿主后端)")
         current = self.cfg.get("cli_model", "")
-        for label, value in (("Haiku(最省)", "haiku"), ("Sonnet(推荐)", "sonnet"),
-                             ("Opus(贵)", "opus"), ("跟随宿主默认", "")):
+        for label, value in recommended_cli_models(
+                self.cfg.get("cli_command", "claude -p")):
             act = QAction(label, model_menu)
             act.setCheckable(True)
             act.setChecked(value == current)
@@ -1368,6 +1502,11 @@ class PetWindow(QWidget):
         tts_act.setChecked(self.cfg.get("tts_enabled", True))
         tts_act.toggled.connect(self.toggle_tts)
         menu.addAction(tts_act)
+        sfx_act = QAction("完成音效", menu)
+        sfx_act.setCheckable(True)
+        sfx_act.setChecked(self.cfg.get("sfx_enabled", True))
+        sfx_act.toggled.connect(self.toggle_sfx)
+        menu.addAction(sfx_act)
         quit_act = QAction("退出", menu)
         quit_act.triggered.connect(QApplication.instance().quit)
         menu.addAction(quit_act)
@@ -1377,6 +1516,12 @@ class PetWindow(QWidget):
         self.cfg["tts_enabled"] = enabled
         if not enabled:
             self.player.stop()
+        self.save_cfg()
+
+    def toggle_sfx(self, enabled: bool):
+        self.cfg["sfx_enabled"] = enabled
+        if not enabled:
+            self.sfx_player.stop()
         self.save_cfg()
 
 

@@ -1,7 +1,7 @@
 {
   "backend": "cli",
   "cli_command": "claude -p",
-  "cli_model": "sonnet",
+  "cli_model": "haiku",
   "api_base": "https://api.deepseek.com/v1",
   "api_key": "",
   "model": "deepseek-chat",
@@ -14,8 +14,13 @@
   "emote_shuffle": false,
   "emote_shuffle_minutes": 5,
   "stop_sound": "assets/sounds/task_end.mp3",
+  "sfx_enabled": true,
   "notify_email": "",
   "risk_notes": true,
+  "chat_width": 300,
+  "chat_height": 260,
+  "stop_notify_min_seconds": 120,
+  "task_cli": "claude --continue -p",
   "memory_enabled": true,
   "resume_cli": "claude -p"
 }
